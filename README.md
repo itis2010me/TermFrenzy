@@ -1,4 +1,4 @@
-# Feeding Frenzy
+# TermFrenzy
 
 A terminal-based game inspired by PopCap's Feeding Frenzy, built with Python and [blessed](https://github.com/jquast/blessed).
 
@@ -13,7 +13,7 @@ pip install blessed
 ## Run
 
 ```bash
-python game.py
+python src/game.py
 ```
 
 ## Controls
@@ -38,3 +38,15 @@ python game.py
   - Multi-stage pop animation (`*` → ring of droplets → fade) when reaching the top or touched by a fish (50% chance)
   - Run on real wall-clock time (independent of frame rate)
 - **Sea floor** with depth layers — sand, swaying seaweed (`()` and `{}` styles), and rocks appear in front of or behind the player
+
+## Changelog
+
+### v0.1.0
+- Initial release
+- Mouse-controlled player fish with 3 sizes (small/medium/big)
+- NPC fish with front/back depth layers
+- Skittish small fish that flee from the player
+- Bubbles with float physics and multi-stage pop animation
+- Fish-triggered bubble popping (50% chance on contact)
+- Sea floor with sand, swaying seaweed (two styles), and rocks
+- Depth layering for sea floor decorations

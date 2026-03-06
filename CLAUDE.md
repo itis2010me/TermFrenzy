@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 source venv/bin/activate   # required each terminal session
-python game.py
+python src/game.py
 ```
 
 The venv uses Python 3.12 and has `blessed` installed as the only dependency.
 
 ## Architecture
 
-This is a single-file terminal game (`game.py`) inspired by PopCap's Feeding Frenzy, built with the [blessed](https://github.com/jquast/blessed) library.
+This is a terminal game (`src/game.py` + `src/fish_sprites.py`) inspired by PopCap's Feeding Frenzy, built with the [blessed](https://github.com/jquast/blessed) library.
 
 ### Game Loop Structure
 
