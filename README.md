@@ -18,12 +18,20 @@ pip install blessed
 python src/game.py
 ```
 
+### Aquarium Mode
+
+Watch the fish swim around without a player — like ASCIIQuarium:
+
+```bash
+python src/game.py --aqua
+```
+
 ## Controls
 
 | Input | Action |
 |-------|--------|
-| Mouse | Fish follows cursor |
-| 1/2/3 | Switch fish size (small/medium/big) |
+| Mouse | Fish follows cursor (game mode only) |
+| 1/2/3 | Switch fish size (game mode only) |
 | Q | Quit |
 
 ## Features
@@ -42,6 +50,12 @@ python src/game.py
 - **Sea floor** with depth layers — sand, swaying seaweed (`()` and `{}` styles), and rocks appear in front of or behind the player
 
 ## Changelog
+
+### v0.2.0
+- Added `--aqua` aquarium mode: no player, just NPC fish swimming around
+- Renamed title bar to TermFrenzy
+- Moved source files to `src/`
+- Added gameplay screenshot
 
 ### v0.1.0
 - Initial release

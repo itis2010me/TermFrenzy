@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 source venv/bin/activate   # required each terminal session
-python src/game.py
+python src/game.py          # normal game mode
+python src/game.py --aqua   # aquarium mode (no player)
 ```
 
 The venv uses Python 3.12 and has `blessed` installed as the only dependency.
@@ -17,10 +18,10 @@ This is a terminal game (`src/game.py` + `src/fish_sprites.py`) inspired by PopC
 
 ### Game Loop Structure
 
-The game runs a main loop in `main()` with these phases per frame:
-1. **Input** — raw bytes read from stdin via `select`/`os.read` (not `term.inkey`) to support SGR mouse tracking alongside keyboard input
-2. **Update** — player movement (toward mouse cursor), bubble physics, NPC fish movement
-3. **Draw** — build a single output string with `term.move_xy()` positioning, then flush once
+The game accepts `--aqua` for aquarium mode (no player, no mouse tracking). The `main(aqua_mode)` function runs a loop with these phases per frame:
+1. **Input** — raw bytes read from stdin via `select`/`os.read` (not `term.inkey`) to support SGR mouse tracking alongside keyboard input. In aqua mode, mouse tracking is disabled and only `q` is checked.
+2. **Update** — player movement (toward mouse cursor, skipped in aqua mode), bubble physics, NPC fish movement
+3. **Draw** — build a single output string with `term.move_xy()` positioning, then flush once. In aqua mode, all NPC fish are drawn without layer splitting since there is no player.
 
 ### Timing Model
 

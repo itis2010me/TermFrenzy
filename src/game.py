@@ -1,3 +1,4 @@
+import argparse
 from blessed import Terminal
 import fcntl
 import math
@@ -10,7 +11,7 @@ import time
 
 from fish_sprites import PLAYER_SIZES, NPC_SPRITES
 
-def main():
+def main(aqua_mode=False):
     term = Terminal()
 
     px = term.width // 2
@@ -58,8 +59,9 @@ def main():
     DISABLE_MOUSE = '\033[?1003l\033[?1006l'
 
     with term.fullscreen(), term.cbreak(), term.hidden_cursor():
-        sys.stdout.write(ENABLE_MOUSE)
-        sys.stdout.flush()
+        if not aqua_mode:
+            sys.stdout.write(ENABLE_MOUSE)
+            sys.stdout.flush()
 
         fd = sys.stdin.fileno()
 
@@ -75,53 +77,54 @@ def main():
 
                 raw_str = raw.decode('utf-8', errors='ignore')
 
-                # Parse SGR mouse sequences: \033[<btn;x;yM or m
-                for match in re.finditer(r'\033\[<(\d+);(\d+);(\d+)([Mm])', raw_str):
-                    btn, mx, my, action = match.groups()
-                    mouse_x = int(mx) - 1
-                    mouse_y = int(my) - 1
-
                 # Strip escape sequences to find plain keypresses
                 plain = re.sub(r'\033\[<[^Mm]*[Mm]', '', raw_str)
                 plain = re.sub(r'\033\[[^a-zA-Z]*[a-zA-Z]', '', plain)
 
-                direction = "right" if facing_right else "left"
-                sprite = PLAYER_SIZES[size][direction]
-                fish_w = len(sprite[0])
-                fish_h = len(sprite)
-
                 if 'q' in plain:
                     break
 
-                # Move fish toward mouse position
-                if mouse_x is not None and mouse_y is not None:
-                    fish_cx = px + fish_w // 2
-                    fish_cy = py + fish_h // 2
+                if not aqua_mode:
+                    # Parse SGR mouse sequences: \033[<btn;x;yM or m
+                    for match in re.finditer(r'\033\[<(\d+);(\d+);(\d+)([Mm])', raw_str):
+                        btn, mx, my, action = match.groups()
+                        mouse_x = int(mx) - 1
+                        mouse_y = int(my) - 1
 
-                    dx = mouse_x - fish_cx
-                    dy = mouse_y - fish_cy
+                    direction = "right" if facing_right else "left"
+                    sprite = PLAYER_SIZES[size][direction]
+                    fish_w = len(sprite[0])
+                    fish_h = len(sprite)
 
-                    if abs(dx) > 1:
-                        px += 1 if dx > 0 else -1
-                        facing_right = dx > 0
-                    if abs(dy) > 1:
-                        py += 1 if dy > 0 else -1
+                    # Move fish toward mouse position
+                    if mouse_x is not None and mouse_y is not None:
+                        fish_cx = px + fish_w // 2
+                        fish_cy = py + fish_h // 2
 
-                if '3' in plain:
-                    size = "big"
-                elif '2' in plain:
-                    size = "medium"
-                elif '1' in plain:
-                    size = "small"
+                        dx = mouse_x - fish_cx
+                        dy = mouse_y - fish_cy
 
-                direction = "right" if facing_right else "left"
-                player_sprite = PLAYER_SIZES[size][direction]
-                fish_w = len(player_sprite[0])
-                fish_h = len(player_sprite)
+                        if abs(dx) > 1:
+                            px += 1 if dx > 0 else -1
+                            facing_right = dx > 0
+                        if abs(dy) > 1:
+                            py += 1 if dy > 0 else -1
 
-                # Clamped player draw position (used for collision + drawing)
-                draw_x = max(1, min(px, term.width - fish_w - 1))
-                draw_y = max(1, min(py, term.height - fish_h - 1))
+                    if '3' in plain:
+                        size = "big"
+                    elif '2' in plain:
+                        size = "medium"
+                    elif '1' in plain:
+                        size = "small"
+
+                    direction = "right" if facing_right else "left"
+                    player_sprite = PLAYER_SIZES[size][direction]
+                    fish_w = len(player_sprite[0])
+                    fish_h = len(player_sprite)
+
+                    # Clamped player draw position (used for collision + drawing)
+                    draw_x = max(1, min(px, term.width - fish_w - 1))
+                    draw_y = max(1, min(py, term.height - fish_h - 1))
 
                 # Spawn a bubble occasionally near the bottom
                 now = time.monotonic()
@@ -169,11 +172,12 @@ def main():
 
                     # Check collision with player fish
                     popped = False
-                    if draw_x <= b['x'] < draw_x + fish_w and draw_y <= b['y'] < draw_y + fish_h:
-                        if random.random() < 0.5:
-                            b['popping'] = 1
-                            b['pop_start'] = now
-                            popped = True
+                    if not aqua_mode:
+                        if draw_x <= b['x'] < draw_x + fish_w and draw_y <= b['y'] < draw_y + fish_h:
+                            if random.random() < 0.5:
+                                b['popping'] = 1
+                                b['pop_start'] = now
+                                popped = True
 
                     # Check collision with NPC fish
                     if not popped:
@@ -226,7 +230,7 @@ def main():
                     dt = now - f['last_update']
                     f['last_update'] = now
 
-                    if f['skittish']:
+                    if f['skittish'] and not aqua_mode:
                         # Check distance to player center
                         fish_cx = draw_x + fish_w // 2
                         fish_cy = draw_y + fish_h // 2
@@ -249,6 +253,12 @@ def main():
                                 f['x'] += f['speed'] * dt
                             else:
                                 f['x'] -= f['speed'] * dt
+                    elif f['skittish']:
+                        # Aqua mode: skittish fish just swim normally
+                        if f['going_right']:
+                            f['x'] += f['speed'] * dt
+                        else:
+                            f['x'] -= f['speed'] * dt
                     else:
                         elapsed = now - f['born']
                         if f['going_right']:
@@ -279,7 +289,10 @@ def main():
                 output += term.move_xy(0, term.height - 1) + '+' + '-' * (term.width - 2) + '+'
 
                 # Title
-                title = " Feeding Frenzy | Mouse:move 1/2/3:size Q:quit "
+                if aqua_mode:
+                    title = " TermFrenzy Aquarium | Q:quit "
+                else:
+                    title = " TermFrenzy | Mouse:move 1/2/3:size Q:quit "
                 output += term.move_xy(2, 0) + title
 
                 # Sea floor - sand
@@ -342,35 +355,47 @@ def main():
                         if 1 <= bx < term.width - 1 and 1 <= by < term.height - 1:
                             output += term.move_xy(bx, by) + ch
 
-                # Draw back-layer NPC fish (behind player)
-                for f in npc_fish:
-                    if f['layer'] != 'back':
-                        continue
-                    sprite = f['sprite_r'] if f['going_right'] else f['sprite_l']
-                    fx = int(f['x'])
-                    fy = int(f['draw_y'])
-                    if 1 <= fy < term.height - 1:
-                        for i, ch in enumerate(sprite):
-                            cx = fx + i
-                            if 1 <= cx < term.width - 1:
-                                output += term.move_xy(cx, fy) + ch
+                if aqua_mode:
+                    # Draw all NPC fish (no player, no layer split needed)
+                    for f in npc_fish:
+                        sprite = f['sprite_r'] if f['going_right'] else f['sprite_l']
+                        fx = int(f['x'])
+                        fy = int(f['draw_y'])
+                        if 1 <= fy < term.height - 1:
+                            for i, ch in enumerate(sprite):
+                                cx = fx + i
+                                if 1 <= cx < term.width - 1:
+                                    output += term.move_xy(cx, fy) + ch
+                else:
+                    # Draw back-layer NPC fish (behind player)
+                    for f in npc_fish:
+                        if f['layer'] != 'back':
+                            continue
+                        sprite = f['sprite_r'] if f['going_right'] else f['sprite_l']
+                        fx = int(f['x'])
+                        fy = int(f['draw_y'])
+                        if 1 <= fy < term.height - 1:
+                            for i, ch in enumerate(sprite):
+                                cx = fx + i
+                                if 1 <= cx < term.width - 1:
+                                    output += term.move_xy(cx, fy) + ch
 
-                # Draw player fish
-                for i, row in enumerate(player_sprite):
-                    output += term.move_xy(draw_x, draw_y + i) + row
+                    # Draw player fish
+                    for i, row in enumerate(player_sprite):
+                        output += term.move_xy(draw_x, draw_y + i) + row
 
-                # Draw front-layer NPC fish (in front of player)
-                for f in npc_fish:
-                    if f['layer'] != 'front':
-                        continue
-                    sprite = f['sprite_r'] if f['going_right'] else f['sprite_l']
-                    fx = int(f['x'])
-                    fy = int(f['draw_y'])
-                    if 1 <= fy < term.height - 1:
-                        for i, ch in enumerate(sprite):
-                            cx = fx + i
-                            if 1 <= cx < term.width - 1:
-                                output += term.move_xy(cx, fy) + ch
+                    # Draw front-layer NPC fish (in front of player)
+                    for f in npc_fish:
+                        if f['layer'] != 'front':
+                            continue
+                        sprite = f['sprite_r'] if f['going_right'] else f['sprite_l']
+                        fx = int(f['x'])
+                        fy = int(f['draw_y'])
+                        if 1 <= fy < term.height - 1:
+                            for i, ch in enumerate(sprite):
+                                cx = fx + i
+                                if 1 <= cx < term.width - 1:
+                                    output += term.move_xy(cx, fy) + ch
 
                 # Sea floor - front-layer seaweed
                 for sx, sh, soff, sw_style, sw_layer in seaweeds:
@@ -399,7 +424,11 @@ def main():
                 print(output, end='', flush=True)
 
         finally:
-            sys.stdout.write(DISABLE_MOUSE)
-            sys.stdout.flush()
+            if not aqua_mode:
+                sys.stdout.write(DISABLE_MOUSE)
+                sys.stdout.flush()
 
-main()
+parser = argparse.ArgumentParser(description='TermFrenzy - terminal Feeding Frenzy game')
+parser.add_argument('--aqua', action='store_true', help='Aquarium mode: no player, just watch the fish')
+args = parser.parse_args()
+main(aqua_mode=args.aqua)
