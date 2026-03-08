@@ -22,9 +22,9 @@ This is a terminal game inspired by PopCap's Feeding Frenzy, built with the [ble
 src/
   game.py          — game loop orchestrator (input → update → draw)
   config.py        — all constants and tuning values
-  entities.py      — Player, NPCFish, Bubble, ScorePopup classes
+  entities.py      — Player, NPCFish, Shark, Bubble, ScorePopup classes
   sea_floor.py     — SeaFloor class (generation + rendering)
-  fish_sprites.py  — sprite art data (PLAYER_SIZES, NPC_SPRITES only)
+  fish_sprites.py  — sprite art data (PLAYER_SIZES, NPC_SPRITES, SHARK_SPRITE_RIGHT/LEFT)
 ```
 
 ### Title Screen
@@ -35,8 +35,8 @@ src/
 
 The `main(term, fd, aqua_mode, aqua_state)` function runs a loop with these phases per frame:
 1. **Input** — `read_input(fd)` reads raw bytes via `select`/`os.read`, `strip_escapes()` isolates keyboard presses. In aqua mode, mouse tracking is disabled and only `q` is checked.
-2. **Update** — `player.update()`, bubble spawn/update, NPC spawn/update/eat, `player.check_growth()`, popup update
-3. **Draw** — border → title → sea_floor(back) → bubbles → npc(back) → player → npc(front) → popups → sea_floor(front). All `draw()` methods return string fragments with `term.move_xy()` for single-flush compositing.
+2. **Update** — `player.update()`, bubble spawn/update, NPC spawn/update/eat, shark spawn/update/eat, `player.check_growth()`, popup update
+3. **Draw** — border → title → sea_floor(back) → bubbles → npc(back) → player → npc(front) → sharks → popups → sea_floor(front). All `draw()` methods return string fragments with `term.move_xy()` for single-flush compositing.
 
 ### Timing Model
 
@@ -45,7 +45,8 @@ All animations (bubbles, NPC fish) use **wall-clock time** (`time.monotonic()`) 
 ### Entity Classes (entities.py)
 
 - **Player** — state: `px`, `py`, `facing_right`, `size`, `score`, `draw_x`, `draw_y`, `fish_w`, `fish_h`, `sprite`, `dropping`. Has a drop-in animation on spawn (`DROP_DURATION = 1.0s`, ease-out curve) — mouse tracking starts after the drop completes. Methods: `update()`, `check_growth()`, `draw()`.
-- **NPCFish** — classmethod `spawn()` factory. Methods: `update()` (movement/bob/flee, returns False if off-screen), `check_eat_collision()` (returns points or None), `draw()`.
+- **NPCFish** — classmethod `spawn()` factory (weighted: small fish spawn 3x more via `NPC_SPAWN_WEIGHTS`). Methods: `update()` (movement/bob/flee from threats, returns False if off-screen), `check_eat_collision()` (returns points or None), `draw()`. All NPC fish flee from predators: player (if eatable), larger NPC fish (`NPC_CAN_EAT`), and active sharks within `NPC_FLEE_RADIUS`.
+- **Shark** — multi-row predator NPC (4-row ASCII art). Spawns with a 2s flashing warning sign at the screen edge, then swims across. Chases nearest target (NPC or small/medium player) within `SHARK_AGGRO_RADIUS` — vertical pursuit + up to `SHARK_MAX_TURNS` direction reversals. Big player eats shark for 10 pts; shark eats small/medium player → game over. Shark also eats NPC fish on collision (removed silently). Only spawns in frenzy mode, max 1 on screen.
 - **Bubble** — classmethod `maybe_spawn()` factory. Methods: `update()` (physics + collision, returns False if expired), `draw()` (with pop animation stages).
 - **ScorePopup** — Methods: `update()` (drift up, returns False if expired), `draw()` (with fade).
 
@@ -53,8 +54,10 @@ All animations (bubbles, NPC fish) use **wall-clock time** (`time.monotonic()`) 
 
 - **Mouse input**: SGR mouse tracking (`\033[?1003h\033[?1006h`) is enabled/disabled manually via escape sequences. Mouse sequences are parsed with regex, then stripped from raw input to isolate keyboard presses.
 - **Player fish sprites**: Multi-row ASCII art stored in `PLAYER_SIZES` dict in `fish_sprites.py`, keyed by size (`small`/`medium`/`big`) and direction (`left`/`right`). The `right` sprite has the head (eye `o`) on the right side.
-- **NPC fish**: 1-row sprites from `NPC_SPRITES` in `fish_sprites.py` that spawn off-screen and swim across. Each has a `layer` (`back`/`front`) determining draw order relative to the player and a `level` (0=small, 1=medium) from `NPC_LEVELS` in `config.py`. Non-skittish fish use `start_x + speed * elapsed`; skittish fish (the 2 smallest, ≤3 chars) use incremental updates and flee from the player within a radius.
+- **NPC fish**: 1-row sprites from `NPC_SPRITES` in `fish_sprites.py` that spawn off-screen and swim across. Each has a `layer` (`back`/`front`) determining draw order relative to the player and a `level` (0=small, 1=medium) from `NPC_LEVELS` in `config.py`. Non-skittish fish use `start_x + speed * elapsed`; skittish fish (the 2 smallest, ≤3 chars) use incremental updates. All NPC fish flee from threats (player, larger NPC fish, sharks) within flee radius.
 - **Eating**: Player eats NPC fish on AABB collision if `f.level in CAN_EAT[player.size]`. Eaten fish are removed, points added to `player.score`, and a ScorePopup is created. Player auto-grows at score thresholds defined in `GROWTH_THRESHOLDS`.
+- **Shark**: Multi-row predator from `SHARK_SPRITE_RIGHT/LEFT` in `fish_sprites.py`. Spawns every 15-20s (`SHARK_SPAWN_INTERVAL_RANGE`) with a 2s warning sign. Chases targets within `SHARK_AGGRO_RADIUS` (vertical pursuit + horizontal turn-arounds up to `SHARK_MAX_TURNS`). Eats NPC fish on collision; eats small/medium player → game over; big player eats shark → 10 pts.
+- **Game over**: Shark killing the player triggers a game over screen with restart (R) or quit (Q) option. `main()` returns `'restart'` to loop back.
 - **Bubbles**: Bubble objects with individual `rise_iv`/`wobble_iv` intervals. They grow through visual stages (`.` -> `o` -> `O`) based on age in seconds. Multi-stage pop animation (`*` -> droplet ring -> fade) triggers when reaching the top border or when a fish (player or NPC) touches them (50% chance).
 - **Sea floor**: `SeaFloor` class generates decorations (sand, seaweed, rocks) once at startup. `draw(term, now, layer)` renders for a given layer. Seaweed sways using `math.sin()` with wall-clock time. Both seaweed and rocks have a `layer` for depth relative to the player.
 - **Aqua mode**: `player is None` guards all player-dependent paths. `aqua_mode` bool passed to `NPCFish.update()` to disable skittish flee behavior.

@@ -29,6 +29,7 @@ A title screen lets you choose between **Frenzy Mode** (gameplay) and **Aquarium
 | Enter | Select menu option |
 | Mouse | Fish follows cursor (frenzy mode only) |
 | Q | Quit |
+| R | Restart (on game over screen) |
 
 ## Features
 
@@ -38,23 +39,36 @@ A title screen lets you choose between **Frenzy Mode** (gameplay) and **Aquarium
   - Grow to medium at 20 points, big at 50 points
   - Score popup floats up from eaten fish
 - **NPC fish** with depth layers (some swim in front, some behind the player)
-  - Small fish are skittish and flee from the player (but can be caught)
+  - Small fish spawn 3x more often than large fish
+  - All fish flee from predators — player, larger NPC fish, and sharks
 - **Bubbles** that:
   - Spawn near the bottom and float upward
   - Each bubble has its own rise speed and wobble rate
   - Grow through stages (`.` → `o` → `O`)
   - Multi-stage pop animation (`*` → ring of droplets → fade) when reaching the top or touched by a fish (50% chance)
   - Run on real wall-clock time (independent of frame rate)
+- **Shark** predator that hunts fish and the player
+  - Warning sign flashes at screen edge 2 seconds before the shark appears
+  - Chases nearest target vertically and can turn around up to 5 times
+  - Eats NPC fish on contact; eats small/medium player → game over
+  - Big player can eat the shark for 10 points
+- **Game over & restart** — shark killing the player shows a game over screen with final score; press R to restart or Q to quit
 - **Sea floor** with depth layers — sand, swaying seaweed (`()` and `{}` styles), and rocks appear in front of or behind the player
 
 ## Features Coming
 
 - Eating animation
 - Fish groups
-- Larger and more dangerous fishes
 - More fish varieties (always)
 
 ## Changelog
+
+### v0.5.0
+- Shark predator: multi-row ASCII art, warning sign, aggro-radius chasing with turn-arounds
+- Shark eats NPC fish and kills small/medium player (game over); big player eats shark for 10 pts
+- All NPC fish now flee from predators (larger fish, sharks, player)
+- Small fish spawn 3x more often via weighted selection
+- Game over screen with restart (R) or quit (Q)
 
 ### v0.4.0
 - Title screen with ASCII art logo and live aquarium background

@@ -44,11 +44,26 @@ ROCK_SPACING_RANGE = (12, 20)
 ENABLE_MOUSE = '\033[?1003h\033[?1006h'
 DISABLE_MOUSE = '\033[?1003l\033[?1006l'
 
+# Shark
+SHARK_SPEED_RANGE = (14.0, 20.0)
+SHARK_SPAWN_INTERVAL_RANGE = (15.0, 20.0)
+SHARK_WARNING_DURATION = 2.0
+SHARK_POINTS = 10
+SHARK_CHASE_SPEED = 10.0
+SHARK_MAX_TURNS = 5
+SHARK_AGGRO_RADIUS = 20
+MAX_SHARKS = 1
+
 # NPC levels and points (indexed parallel to NPC_SPRITES in fish_sprites.py)
 NPC_LEVELS = [0, 0, 0, 1, 1, 1]
+NPC_SPAWN_WEIGHTS = [3, 3, 3, 1, 1, 1]  # small fish spawn 3x more often
 NPC_POINTS = {0: 2, 1: 5}
+# Which NPC levels can eat which other NPC levels
+NPC_CAN_EAT = {1: {0}}  # level 1 fish can eat level 0 fish
+NPC_FLEE_RADIUS = 8
 
 # Title screen
+# https://patorjk.com/software/taag/#p=display&f=Classy&t=TermFrenzy&x=none&v=4&h=4&w=80&we=false
 TITLE_ART = [
     "                                                               ",
     "  \u2584\u2584\u2584\u2584\u2584\u2584\u2584                     \u2584\u2584\u2584\u2584\u2584\u2584\u2584                          ",

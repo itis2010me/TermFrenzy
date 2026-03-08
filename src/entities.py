@@ -2,15 +2,18 @@ import math
 import random
 import time
 
-from fish_sprites import PLAYER_SIZES, NPC_SPRITES
+from fish_sprites import PLAYER_SIZES, NPC_SPRITES, SHARK_SPRITE_RIGHT, SHARK_SPRITE_LEFT
 from config import (
     BUBBLE_SPAWN_CHANCE, BUBBLE_POP_DURATION,
     BUBBLE_RISE_IV_RANGE, BUBBLE_WOBBLE_IV_RANGE,
     NPC_SPEED_RANGE, NPC_BOB_AMP_RANGE, NPC_BOB_SPEED_RANGE,
     FLEE_RADIUS, FLEE_SPEED_MULT,
     GROWTH_THRESHOLDS, CAN_EAT,
-    NPC_LEVELS, NPC_POINTS,
+    NPC_LEVELS, NPC_POINTS, NPC_SPAWN_WEIGHTS,
     POPUP_DRIFT_SPEED, POPUP_LIFETIME, POPUP_FADE_TIME, POPUP_VANISH_TIME,
+    SHARK_SPEED_RANGE, SHARK_POINTS, SHARK_CHASE_SPEED, SHARK_MAX_TURNS,
+    SHARK_WARNING_DURATION, SHARK_AGGRO_RADIUS,
+    NPC_CAN_EAT, NPC_FLEE_RADIUS,
 )
 
 
@@ -101,7 +104,7 @@ class NPCFish:
 
     @classmethod
     def spawn(cls, term_width, floor_y, now):
-        sprite_idx = random.randrange(len(NPC_SPRITES))
+        sprite_idx = random.choices(range(len(NPC_SPRITES)), weights=NPC_SPAWN_WEIGHTS, k=1)[0]
         sprite_r, sprite_l = NPC_SPRITES[sprite_idx]
         level = NPC_LEVELS[sprite_idx]
         going_right = random.choice([True, False])
@@ -123,30 +126,71 @@ class NPCFish:
             level=level,
         )
 
-    def update(self, now, player, aqua_mode, floor_y, term_width):
+    def _find_nearest_threat(self, player, aqua_mode, npc_fish, sharks):
+        fx = self.x + len(self.sprite_r) / 2
+        fy = self.y
+        best_dist = float('inf')
+        threat_x = None
+        threat_y = None
+
+        # Flee from player (if player can eat this fish)
+        if not aqua_mode and player is not None:
+            if self.level in CAN_EAT.get(player.size, set()):
+                px = player.draw_x + player.fish_w / 2
+                py = player.draw_y + player.fish_h / 2
+                dist = math.sqrt((fx - px) ** 2 + (fy - py) ** 2)
+                if dist < FLEE_RADIUS and dist < best_dist:
+                    best_dist = dist
+                    threat_x = px
+                    threat_y = py
+
+        # Flee from larger NPC fish
+        for other in npc_fish:
+            if other is self:
+                continue
+            eatable_levels = NPC_CAN_EAT.get(other.level, set())
+            if self.level not in eatable_levels:
+                continue
+            ox = other.x + len(other.sprite_r) / 2
+            oy = other.draw_y
+            dist = math.sqrt((fx - ox) ** 2 + (fy - oy) ** 2)
+            if dist < NPC_FLEE_RADIUS and dist < best_dist:
+                best_dist = dist
+                threat_x = ox
+                threat_y = oy
+
+        # Flee from active sharks
+        for s in sharks:
+            if not s.active:
+                continue
+            sx = s.x + s.fish_w / 2
+            sy = s.draw_y + s.fish_h / 2
+            dist = math.sqrt((fx - sx) ** 2 + (fy - sy) ** 2)
+            if dist < NPC_FLEE_RADIUS and dist < best_dist:
+                best_dist = dist
+                threat_x = sx
+                threat_y = sy
+
+        return threat_x, threat_y, best_dist
+
+    def update(self, now, player, aqua_mode, floor_y, term_width, npc_fish=(), sharks=()):
         dt = now - self.last_update
         self.last_update = now
 
-        if self.skittish and not aqua_mode and player is not None:
-            fish_cx = player.draw_x + player.fish_w // 2
-            fish_cy = player.draw_y + player.fish_h // 2
+        threat_x, threat_y, threat_dist = self._find_nearest_threat(
+            player, aqua_mode, npc_fish, sharks)
+
+        if threat_x is not None and threat_dist > 0:
             fx = self.x + len(self.sprite_r) / 2
             fy = self.y
-            ddx = fx - fish_cx
-            ddy = fy - fish_cy
-            dist = math.sqrt(ddx * ddx + ddy * ddy)
-
-            if dist < FLEE_RADIUS and dist > 0:
-                flee_speed = self.speed * FLEE_SPEED_MULT
-                self.x += (ddx / dist) * flee_speed * dt
-                self.y += (ddy / dist) * flee_speed * dt
-                self.y = max(2, min(self.y, floor_y - 3))
-                self.going_right = ddx > 0
-            else:
-                if self.going_right:
-                    self.x += self.speed * dt
-                else:
-                    self.x -= self.speed * dt
+            ddx = fx - threat_x
+            ddy = fy - threat_y
+            dist = threat_dist
+            flee_speed = self.speed * FLEE_SPEED_MULT
+            self.x += (ddx / dist) * flee_speed * dt
+            self.y += (ddy / dist) * flee_speed * dt
+            self.y = max(2, min(self.y, floor_y - 3))
+            self.going_right = ddx > 0
         elif self.skittish:
             if self.going_right:
                 self.x += self.speed * dt
@@ -316,3 +360,153 @@ class ScorePopup:
         if text and 1 <= ppx < term.width - len(text) and 1 <= ppy < term.height - 1:
             return term.move_xy(ppx, ppy) + text
         return ''
+
+
+class Shark:
+    WARNING_LINES = ['/!\\', '---']
+
+    def __init__(self, going_right, start_x, y, speed, born, term_width):
+        self.going_right = going_right
+        self.x = float(start_x)
+        self.y = float(y)
+        self.speed = speed
+        self.born = born
+        self.warning_until = born + SHARK_WARNING_DURATION
+        self.active = False
+        self.last_update = born
+        self.sprite_r = SHARK_SPRITE_RIGHT
+        self.sprite_l = SHARK_SPRITE_LEFT
+        self.fish_w = max(len(row) for row in self.sprite_r)
+        self.fish_h = len(self.sprite_r)
+        self.draw_y = float(y)
+        self.turns_remaining = SHARK_MAX_TURNS
+        # Warning sign position
+        self.warning_y = int(y) + self.fish_h // 2
+        if going_right:
+            self.warning_x = 2
+        else:
+            self.warning_x = term_width - 5
+
+    @classmethod
+    def spawn(cls, term_width, floor_y, now):
+        going_right = random.choice([True, False])
+        speed = random.uniform(*SHARK_SPEED_RANGE)
+        sprite_h = len(SHARK_SPRITE_RIGHT)
+        y = random.randint(2, max(3, floor_y - sprite_h - 1))
+        sprite_w = max(len(row) for row in SHARK_SPRITE_RIGHT)
+        start_x = -sprite_w if going_right else term_width
+        return cls(going_right, start_x, y, speed, now, term_width)
+
+    def _find_nearest_target(self, npc_fish, player):
+        best_dist = float('inf')
+        target_x = None
+        target_y = None
+        shark_cx = self.x + self.fish_w / 2
+        shark_cy = self.y + self.fish_h / 2
+        for f in npc_fish:
+            fx = f.x + len(f.sprite_r) / 2
+            fy = f.draw_y
+            dist = abs(fx - shark_cx) + abs(fy - shark_cy)
+            if dist < best_dist:
+                best_dist = dist
+                target_x = fx
+                target_y = fy
+        if player is not None and player.size != "big":
+            px = player.draw_x + player.fish_w / 2
+            py = player.draw_y + player.fish_h / 2
+            dist = abs(px - shark_cx) + abs(py - shark_cy)
+            if dist < best_dist:
+                best_dist = dist
+                target_x = px
+                target_y = py
+        if best_dist > SHARK_AGGRO_RADIUS:
+            return None, None
+        return target_x, target_y
+
+    def update(self, now, term_width, floor_y, npc_fish, player):
+        if not self.active:
+            if now >= self.warning_until:
+                self.active = True
+                self.last_update = now
+            return True
+
+        dt = now - self.last_update
+        self.last_update = now
+
+        target_x, target_y = self._find_nearest_target(npc_fish, player)
+
+        # Turn around to chase target (up to max turns)
+        if self.turns_remaining > 0 and target_x is not None:
+            shark_cx = self.x + self.fish_w / 2
+            target_is_right = target_x > shark_cx
+            if target_is_right != self.going_right:
+                self.going_right = target_is_right
+                self.turns_remaining -= 1
+
+        # Horizontal: constant speed in facing direction
+        if self.going_right:
+            self.x += self.speed * dt
+        else:
+            self.x -= self.speed * dt
+
+        # Vertical: chase nearest target
+        if target_y is not None:
+            shark_cy = self.y + self.fish_h / 2
+            dy = target_y - shark_cy
+            if abs(dy) > 0.5:
+                self.y += SHARK_CHASE_SPEED * dt * (1 if dy > 0 else -1)
+                self.y = max(2, min(self.y, floor_y - self.fish_h - 1))
+
+        self.draw_y = self.y
+
+        if self.x > term_width + 10 or self.x < -(self.fish_w + 10):
+            return False
+        return True
+
+    def check_npc_collision(self, npc):
+        if not self.active:
+            return False
+        sx = int(self.x)
+        sy = int(self.draw_y)
+        npc_sprite = npc.sprite_r if npc.going_right else npc.sprite_l
+        fx = int(npc.x)
+        fy = int(npc.draw_y)
+        npc_w = len(npc_sprite)
+        return (sx < fx + npc_w and sx + self.fish_w > fx and
+                sy < fy + 1 and sy + self.fish_h > fy)
+
+    def check_player_collision(self, player):
+        if not self.active:
+            return None
+        sx = int(self.x)
+        sy = int(self.draw_y)
+        if not (sx < player.draw_x + player.fish_w and sx + self.fish_w > player.draw_x and
+                sy < player.draw_y + player.fish_h and sy + self.fish_h > player.draw_y):
+            return None
+        if player.size == "big":
+            return 'killed'
+        return 'eaten'
+
+    def draw(self, term, now):
+        output = ''
+        if not self.active:
+            # Flashing warning sign
+            if int(now / 0.3) % 2 == 0:
+                for i, line in enumerate(self.WARNING_LINES):
+                    dy = self.warning_y - 1 + i
+                    wx = self.warning_x
+                    if 1 <= dy < term.height - 1 and 1 <= wx < term.width - len(line):
+                        output += term.move_xy(wx, dy) + line
+            return output
+
+        sprite = self.sprite_r if self.going_right else self.sprite_l
+        sx = int(self.x)
+        sy = int(self.draw_y)
+        for i, row in enumerate(sprite):
+            dy = sy + i
+            if 1 <= dy < term.height - 1:
+                for j, ch in enumerate(row):
+                    cx = sx + j
+                    if ch != ' ' and 1 <= cx < term.width - 1:
+                        output += term.move_xy(cx, dy) + ch
+        return output

@@ -1,5 +1,6 @@
 import argparse
 import os
+import random
 import re
 import select
 import sys
@@ -12,8 +13,9 @@ from config import (
     GROWTH_THRESHOLDS, GROWTH_BAR_LEN,
     ENABLE_MOUSE, DISABLE_MOUSE, NPC_POINTS,
     TITLE_ART,
+    SHARK_SPAWN_INTERVAL_RANGE, MAX_SHARKS, SHARK_POINTS,
 )
-from entities import Player, NPCFish, Bubble, ScorePopup
+from entities import Player, NPCFish, Bubble, ScorePopup, Shark
 from sea_floor import SeaFloor
 
 
@@ -90,7 +92,8 @@ def update_aqua(sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn, now, t
         npc_fish.append(NPCFish.spawn(term.width, sea.floor_y, now))
 
     # NPC update
-    npc_fish[:] = [f for f in npc_fish if f.update(now, None, True, sea.floor_y, term.width)]
+    npc_fish[:] = [f for f in npc_fish if f.update(now, None, True, sea.floor_y, term.width,
+                                                      npc_fish=npc_fish)]
 
     return last_bubble_time, last_npc_spawn
 
@@ -179,6 +182,10 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
         last_npc_spawn = time.monotonic()
 
     score_popups = []
+    sharks = []
+    last_shark_spawn = time.monotonic()
+    next_shark_interval = random.uniform(*SHARK_SPAWN_INTERVAL_RANGE)
+    game_over = False
 
     mouse_x = None
     mouse_y = None
@@ -224,7 +231,8 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
             # NPC update + eat
             new_npc = []
             for f in npc_fish:
-                if not f.update(now, player, aqua_mode, sea.floor_y, term.width):
+                if not f.update(now, player, aqua_mode, sea.floor_y, term.width,
+                                npc_fish=npc_fish, sharks=sharks):
                     continue
                 if player is not None:
                     pts = f.check_eat_collision(player)
@@ -240,6 +248,39 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
                         continue
                 new_npc.append(f)
             npc_fish = new_npc
+
+            # Shark spawn (frenzy mode only)
+            if not aqua_mode:
+                if now - last_shark_spawn >= next_shark_interval and len(sharks) < MAX_SHARKS:
+                    last_shark_spawn = now
+                    next_shark_interval = random.uniform(*SHARK_SPAWN_INTERVAL_RANGE)
+                    sharks.append(Shark.spawn(term.width, sea.floor_y, now))
+
+            # Shark update
+            new_sharks = []
+            for s in sharks:
+                if not s.update(now, term.width, sea.floor_y, npc_fish, player):
+                    continue
+                if s.active:
+                    npc_fish = [f for f in npc_fish if not s.check_npc_collision(f)]
+                if s.active and player is not None:
+                    result = s.check_player_collision(player)
+                    if result == 'eaten':
+                        game_over = True
+                    elif result == 'killed':
+                        player.score += SHARK_POINTS
+                        score_popups.append(ScorePopup(
+                            int(s.x) + s.fish_w // 2,
+                            int(s.draw_y),
+                            f"+{SHARK_POINTS}",
+                            now,
+                        ))
+                        continue
+                new_sharks.append(s)
+            sharks = new_sharks
+
+            if game_over:
+                break
 
             # Growth
             if player is not None:
@@ -277,6 +318,10 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
                     if f.layer == 'front':
                         output += f.draw(term)
 
+                # Sharks
+                for s in sharks:
+                    output += s.draw(term, now)
+
             # Score popups
             for p in score_popups:
                 output += p.draw(term, now)
@@ -285,6 +330,29 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
             output += sea.draw(term, now, 'front')
 
             print(output, end='', flush=True)
+
+        if game_over and player is not None:
+            sys.stdout.write(DISABLE_MOUSE)
+            sys.stdout.flush()
+            output = term.home + term.clear
+            output += draw_border(term)
+            cx = term.width // 2
+            cy = term.height // 2
+            go_text = "G A M E   O V E R"
+            score_text = f"Final Score: {player.score}"
+            prompt_text = "R: Restart  |  Q: Quit"
+            output += term.move_xy(cx - len(go_text) // 2, cy - 2) + go_text
+            output += term.move_xy(cx - len(score_text) // 2, cy) + score_text
+            output += term.move_xy(cx - len(prompt_text) // 2, cy + 2) + prompt_text
+            print(output, end='', flush=True)
+            while True:
+                raw_str = read_input(fd)
+                plain = strip_escapes(raw_str)
+                if 'r' in plain:
+                    return 'restart'
+                if 'q' in plain or plain:
+                    return None
+            return None
 
     finally:
         if not aqua_mode:
@@ -304,6 +372,11 @@ if __name__ == '__main__':
             main(term, fd, aqua_mode=True)
         else:
             choice, state = title_screen(term, fd)
-            if choice is not None:
+            while choice is not None:
                 aqua = choice == 'aquarium'
-                main(term, fd, aqua_mode=aqua, aqua_state=state if aqua else None)
+                result = main(term, fd, aqua_mode=aqua, aqua_state=state if aqua else None)
+                if result == 'restart':
+                    choice = 'frenzy'
+                    state = None
+                else:
+                    break
