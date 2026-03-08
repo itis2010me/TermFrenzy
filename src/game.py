@@ -11,9 +11,25 @@ from config import (
     FRAME_TIMEOUT, BUBBLE_INTERVAL, NPC_SPAWN_INTERVAL, MAX_NPC,
     GROWTH_THRESHOLDS, GROWTH_BAR_LEN,
     ENABLE_MOUSE, DISABLE_MOUSE, NPC_POINTS,
+    TITLE_ART,
 )
 from entities import Player, NPCFish, Bubble, ScorePopup
 from sea_floor import SeaFloor
+
+
+def read_input(fd):
+    ready, _, _ = select.select([fd], [], [], FRAME_TIMEOUT)
+    raw = b''
+    if ready:
+        while select.select([fd], [], [], 0)[0]:
+            raw += os.read(fd, 1024)
+    return raw.decode('utf-8', errors='ignore')
+
+
+def strip_escapes(raw_str):
+    plain = re.sub(r'\033\[<[^Mm]*[Mm]', '', raw_str)
+    plain = re.sub(r'\033\[[^a-zA-Z]*[a-zA-Z]', '', plain)
+    return plain
 
 
 def draw_border(term):
@@ -44,142 +60,250 @@ def draw_title(term, player, aqua_mode):
     return term.move_xy(2, 0) + title
 
 
-def main(aqua_mode=False):
-    term = Terminal()
+def draw_aqua_frame(term, sea, bubbles, npc_fish, now):
+    output = term.home + term.clear
+    output += draw_border(term)
+    output += term.move_xy(2, 0) + " TermFrenzy "
+    output += sea.draw(term, now, 'back')
+    for b in bubbles:
+        output += b.draw(term, now)
+    for f in npc_fish:
+        output += f.draw(term)
+    output += sea.draw(term, now, 'front')
+    return output
 
-    player = None if aqua_mode else Player(term.width, term.height)
+
+def update_aqua(sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn, now, term):
+    # Bubble spawn
+    if now - last_bubble_time >= BUBBLE_INTERVAL:
+        last_bubble_time = now
+        b = Bubble.maybe_spawn(now, term.width, term.height)
+        if b:
+            bubbles.append(b)
+
+    # Bubble update
+    bubbles[:] = [b for b in bubbles if b.update(now, term.width, None, npc_fish, True)]
+
+    # NPC spawn
+    if now - last_npc_spawn >= NPC_SPAWN_INTERVAL and len(npc_fish) < MAX_NPC:
+        last_npc_spawn = now
+        npc_fish.append(NPCFish.spawn(term.width, sea.floor_y, now))
+
+    # NPC update
+    npc_fish[:] = [f for f in npc_fish if f.update(now, None, True, sea.floor_y, term.width)]
+
+    return last_bubble_time, last_npc_spawn
+
+
+def title_screen(term, fd):
     sea = SeaFloor(term.width, term.height)
-
     bubbles = []
-    last_bubble_time = time.monotonic()
     npc_fish = []
+    last_bubble_time = time.monotonic()
     last_npc_spawn = time.monotonic()
+    selected = 0  # 0 = Frenzy, 1 = Aquarium
+
+    options = ["Frenzy Mode", "Aquarium Mode"]
+
+    title_w = max(len(line) for line in TITLE_ART)
+    title_x = (term.width - title_w) // 2
+
+    box_w = 32
+    box_h = 9
+    box_x = (term.width - box_w) // 2
+    # Position box below the title art with a 1-row gap
+    title_top_y = (term.height - (len(TITLE_ART) + 1 + box_h)) // 2
+    box_y = title_top_y + len(TITLE_ART) + 1
+
+    while True:
+        raw_str = read_input(fd)
+        plain = strip_escapes(raw_str)
+
+        if 'q' in plain:
+            return None, None
+
+        # Arrow keys: \033[A = up, \033[B = down
+        if '\033[A' in raw_str:
+            selected = (selected - 1) % len(options)
+        if '\033[B' in raw_str:
+            selected = (selected + 1) % len(options)
+
+        if '\r' in plain or '\n' in plain:
+            choice = 'frenzy' if selected == 0 else 'aquarium'
+            state = (sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn)
+            return choice, state
+
+        now = time.monotonic()
+        last_bubble_time, last_npc_spawn = update_aqua(
+            sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn, now, term)
+
+        # Draw aquarium background
+        output = draw_aqua_frame(term, sea, bubbles, npc_fish, now)
+
+        # Draw ASCII art title
+        for i, line in enumerate(TITLE_ART):
+            ty = title_top_y + i
+            if 1 <= ty < term.height - 1:
+                output += term.move_xy(title_x, ty) + line
+
+        # Draw menu box overlay
+        output += term.move_xy(box_x, box_y) + '+' + '-' * (box_w - 2) + '+'
+        for row in range(1, box_h - 1):
+            output += term.move_xy(box_x, box_y + row) + '|' + ' ' * (box_w - 2) + '|'
+        output += term.move_xy(box_x, box_y + box_h - 1) + '+' + '-' * (box_w - 2) + '+'
+
+        # Options centered in box
+        longest = max(len(o) for o in options)
+        for i, opt in enumerate(options):
+            if i == selected:
+                line = '> ' + opt.ljust(longest) + ' <'
+            else:
+                line = '  ' + opt.ljust(longest) + '  '
+            lx = box_x + (box_w - len(line)) // 2
+            ly = box_y + (box_h - 1) // 2 - 1 + i * 2
+            output += term.move_xy(lx, ly) + line
+
+        print(output, end='', flush=True)
+
+
+def main(term, fd, aqua_mode=False, aqua_state=None):
+    player = None if aqua_mode else Player(term.width, term.height)
+
+    if aqua_state is not None:
+        sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn = aqua_state
+    else:
+        sea = SeaFloor(term.width, term.height)
+        bubbles = []
+        last_bubble_time = time.monotonic()
+        npc_fish = []
+        last_npc_spawn = time.monotonic()
+
     score_popups = []
 
     mouse_x = None
     mouse_y = None
 
-    with term.fullscreen(), term.cbreak(), term.hidden_cursor():
-        if not aqua_mode:
-            sys.stdout.write(ENABLE_MOUSE)
-            sys.stdout.flush()
+    if not aqua_mode:
+        sys.stdout.write(ENABLE_MOUSE)
+        sys.stdout.flush()
 
-        fd = sys.stdin.fileno()
+    try:
+        while True:
+            # --- INPUT ---
+            raw_str = read_input(fd)
+            plain = strip_escapes(raw_str)
 
-        try:
-            while True:
-                # --- INPUT ---
-                ready, _, _ = select.select([fd], [], [], FRAME_TIMEOUT)
-                raw = b''
-                if ready:
-                    while select.select([fd], [], [], 0)[0]:
-                        raw += os.read(fd, 1024)
+            if 'q' in plain:
+                break
 
-                raw_str = raw.decode('utf-8', errors='ignore')
-                plain = re.sub(r'\033\[<[^Mm]*[Mm]', '', raw_str)
-                plain = re.sub(r'\033\[[^a-zA-Z]*[a-zA-Z]', '', plain)
+            # --- UPDATE ---
+            now = time.monotonic()
 
-                if 'q' in plain:
-                    break
+            if player is not None:
+                for match in re.finditer(r'\033\[<(\d+);(\d+);(\d+)([Mm])', raw_str):
+                    btn, mx, my, action = match.groups()
+                    mouse_x = int(mx) - 1
+                    mouse_y = int(my) - 1
+                player.update(mouse_x, mouse_y, term.width, term.height)
 
-                # --- UPDATE ---
-                now = time.monotonic()
+            # Bubble spawn
+            if now - last_bubble_time >= BUBBLE_INTERVAL:
+                last_bubble_time = now
+                b = Bubble.maybe_spawn(now, term.width, term.height)
+                if b:
+                    bubbles.append(b)
 
+            # Bubble update
+            bubbles = [b for b in bubbles if b.update(now, term.width, player, npc_fish, aqua_mode)]
+
+            # NPC spawn
+            if now - last_npc_spawn >= NPC_SPAWN_INTERVAL and len(npc_fish) < MAX_NPC:
+                last_npc_spawn = now
+                npc_fish.append(NPCFish.spawn(term.width, sea.floor_y, now))
+
+            # NPC update + eat
+            new_npc = []
+            for f in npc_fish:
+                if not f.update(now, player, aqua_mode, sea.floor_y, term.width):
+                    continue
                 if player is not None:
-                    for match in re.finditer(r'\033\[<(\d+);(\d+);(\d+)([Mm])', raw_str):
-                        btn, mx, my, action = match.groups()
-                        mouse_x = int(mx) - 1
-                        mouse_y = int(my) - 1
-                    player.update(mouse_x, mouse_y, term.width, term.height)
-
-                # Bubble spawn
-                if now - last_bubble_time >= BUBBLE_INTERVAL:
-                    last_bubble_time = now
-                    b = Bubble.maybe_spawn(now, term.width, term.height)
-                    if b:
-                        bubbles.append(b)
-
-                # Bubble update
-                bubbles = [b for b in bubbles if b.update(now, term.width, player, npc_fish, aqua_mode)]
-
-                # NPC spawn
-                if now - last_npc_spawn >= NPC_SPAWN_INTERVAL and len(npc_fish) < MAX_NPC:
-                    last_npc_spawn = now
-                    npc_fish.append(NPCFish.spawn(term.width, sea.floor_y, now))
-
-                # NPC update + eat
-                new_npc = []
-                for f in npc_fish:
-                    if not f.update(now, player, aqua_mode, sea.floor_y, term.width):
+                    pts = f.check_eat_collision(player)
+                    if pts is not None:
+                        player.score += pts
+                        sprite = f.sprite_r if f.going_right else f.sprite_l
+                        score_popups.append(ScorePopup(
+                            int(f.x) + len(sprite) // 2,
+                            int(f.draw_y),
+                            f"+{pts}",
+                            now,
+                        ))
                         continue
-                    if player is not None:
-                        pts = f.check_eat_collision(player)
-                        if pts is not None:
-                            player.score += pts
-                            sprite = f.sprite_r if f.going_right else f.sprite_l
-                            score_popups.append(ScorePopup(
-                                int(f.x) + len(sprite) // 2,
-                                int(f.draw_y),
-                                f"+{pts}",
-                                now,
-                            ))
-                            continue
-                    new_npc.append(f)
-                npc_fish = new_npc
+                new_npc.append(f)
+            npc_fish = new_npc
 
-                # Growth
-                if player is not None:
-                    player.check_growth()
+            # Growth
+            if player is not None:
+                player.check_growth()
 
-                # Popup update
-                score_popups = [p for p in score_popups if p.update(now)]
+            # Popup update
+            score_popups = [p for p in score_popups if p.update(now)]
 
-                # --- DRAW ---
-                output = term.home + term.clear
-                output += draw_border(term)
-                output += draw_title(term, player, aqua_mode)
+            # --- DRAW ---
+            output = term.home + term.clear
+            output += draw_border(term)
+            output += draw_title(term, player, aqua_mode)
 
-                # Sea floor back layer
-                output += sea.draw(term, now, 'back')
+            # Sea floor back layer
+            output += sea.draw(term, now, 'back')
 
-                # Bubbles
-                for b in bubbles:
-                    output += b.draw(term, now)
+            # Bubbles
+            for b in bubbles:
+                output += b.draw(term, now)
 
-                if aqua_mode:
-                    for f in npc_fish:
+            if aqua_mode:
+                for f in npc_fish:
+                    output += f.draw(term)
+            else:
+                # Back-layer NPC
+                for f in npc_fish:
+                    if f.layer == 'back':
                         output += f.draw(term)
-                else:
-                    # Back-layer NPC
-                    for f in npc_fish:
-                        if f.layer == 'back':
-                            output += f.draw(term)
 
-                    # Player
-                    output += player.draw(term)
+                # Player
+                output += player.draw(term)
 
-                    # Front-layer NPC
-                    for f in npc_fish:
-                        if f.layer == 'front':
-                            output += f.draw(term)
+                # Front-layer NPC
+                for f in npc_fish:
+                    if f.layer == 'front':
+                        output += f.draw(term)
 
-                # Score popups
-                for p in score_popups:
-                    output += p.draw(term, now)
+            # Score popups
+            for p in score_popups:
+                output += p.draw(term, now)
 
-                # Sea floor front layer
-                output += sea.draw(term, now, 'front')
+            # Sea floor front layer
+            output += sea.draw(term, now, 'front')
 
-                print(output, end='', flush=True)
+            print(output, end='', flush=True)
 
-        finally:
-            if not aqua_mode:
-                sys.stdout.write(DISABLE_MOUSE)
-                sys.stdout.flush()
+    finally:
+        if not aqua_mode:
+            sys.stdout.write(DISABLE_MOUSE)
+            sys.stdout.flush()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='TermFrenzy - terminal Feeding Frenzy game')
     parser.add_argument('--aqua', action='store_true', help='Aquarium mode: no player, just watch the fish')
     args = parser.parse_args()
-    main(aqua_mode=args.aqua)
+
+    term = Terminal()
+    with term.fullscreen(), term.cbreak(), term.hidden_cursor():
+        fd = sys.stdin.fileno()
+        if args.aqua:
+            main(term, fd, aqua_mode=True)
+        else:
+            choice, state = title_screen(term, fd)
+            if choice is not None:
+                aqua = choice == 'aquarium'
+                main(term, fd, aqua_mode=aqua, aqua_state=state if aqua else None)

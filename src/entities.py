@@ -1,5 +1,6 @@
 import math
 import random
+import time
 
 from fish_sprites import PLAYER_SIZES, NPC_SPRITES
 from config import (
@@ -14,12 +15,17 @@ from config import (
 
 
 class Player:
+    DROP_DURATION = 1.0
+
     def __init__(self, term_width, term_height):
         self.px = term_width // 2
-        self.py = term_height // 2
+        self.target_y = term_height // 2
+        self.py = 1  # start at top
         self.facing_right = True
         self.size = "small"
         self.score = 0
+        self.drop_start = time.monotonic()
+        self.dropping = True
         self._update_sprite()
         self.draw_x = self.px
         self.draw_y = self.py
@@ -31,16 +37,27 @@ class Player:
         self.fish_h = len(self.sprite)
 
     def update(self, mouse_x, mouse_y, term_width, term_height):
-        if mouse_x is not None and mouse_y is not None:
-            fish_cx = self.px + self.fish_w // 2
-            fish_cy = self.py + self.fish_h // 2
-            dx = mouse_x - fish_cx
-            dy = mouse_y - fish_cy
-            if abs(dx) > 1:
-                self.px += 1 if dx > 0 else -1
-                self.facing_right = dx > 0
-            if abs(dy) > 1:
-                self.py += 1 if dy > 0 else -1
+        if self.dropping:
+            elapsed = time.monotonic() - self.drop_start
+            if elapsed >= self.DROP_DURATION:
+                self.dropping = False
+                self.py = self.target_y
+            else:
+                t = elapsed / self.DROP_DURATION
+                # ease-out: decelerate as it lands
+                t = 1 - (1 - t) ** 2
+                self.py = int(1 + (self.target_y - 1) * t)
+        else:
+            if mouse_x is not None and mouse_y is not None:
+                fish_cx = self.px + self.fish_w // 2
+                fish_cy = self.py + self.fish_h // 2
+                dx = mouse_x - fish_cx
+                dy = mouse_y - fish_cy
+                if abs(dx) > 1:
+                    self.px += 1 if dx > 0 else -1
+                    self.facing_right = dx > 0
+                if abs(dy) > 1:
+                    self.py += 1 if dy > 0 else -1
 
         self._update_sprite()
         self.draw_x = max(1, min(self.px, term_width - self.fish_w - 1))
