@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 source venv/bin/activate   # required each terminal session
-python src/game.py          # normal game mode
-python src/game.py --aqua   # aquarium mode (no player)
+python src/game.py          # launches title screen (select Frenzy or Aquarium)
+python src/game.py --aqua   # skip title screen, go straight to aquarium mode
 ```
 
 The venv uses Python 3.12 and has `blessed` installed as the only dependency.
@@ -27,10 +27,14 @@ src/
   fish_sprites.py  — sprite art data (PLAYER_SIZES, NPC_SPRITES only)
 ```
 
+### Title Screen
+
+`title_screen(term, fd)` in `game.py` runs a live aquarium as background with a centered ASCII art logo (`TITLE_ART` in `config.py`) and a selection box. Arrow keys switch between Frenzy and Aquarium mode, Enter selects, `q` quits. The terminal context (`fullscreen`, `cbreak`, `hidden_cursor`) is shared between the title screen and the game to avoid screen flash. When Aquarium mode is selected, the aquarium state (sea floor, fish, bubbles) carries over seamlessly.
+
 ### Game Loop Structure
 
-The game accepts `--aqua` for aquarium mode (no player, no mouse tracking). The `main(aqua_mode)` function in `game.py` runs a loop with these phases per frame:
-1. **Input** — raw bytes read from stdin via `select`/`os.read` (not `term.inkey`) to support SGR mouse tracking alongside keyboard input. In aqua mode, mouse tracking is disabled and only `q` is checked.
+The `main(term, fd, aqua_mode, aqua_state)` function runs a loop with these phases per frame:
+1. **Input** — `read_input(fd)` reads raw bytes via `select`/`os.read`, `strip_escapes()` isolates keyboard presses. In aqua mode, mouse tracking is disabled and only `q` is checked.
 2. **Update** — `player.update()`, bubble spawn/update, NPC spawn/update/eat, `player.check_growth()`, popup update
 3. **Draw** — border → title → sea_floor(back) → bubbles → npc(back) → player → npc(front) → popups → sea_floor(front). All `draw()` methods return string fragments with `term.move_xy()` for single-flush compositing.
 
@@ -40,7 +44,7 @@ All animations (bubbles, NPC fish) use **wall-clock time** (`time.monotonic()`) 
 
 ### Entity Classes (entities.py)
 
-- **Player** — state: `px`, `py`, `facing_right`, `size`, `score`, `draw_x`, `draw_y`, `fish_w`, `fish_h`, `sprite`. Methods: `update()`, `check_growth()`, `draw()`.
+- **Player** — state: `px`, `py`, `facing_right`, `size`, `score`, `draw_x`, `draw_y`, `fish_w`, `fish_h`, `sprite`, `dropping`. Has a drop-in animation on spawn (`DROP_DURATION = 1.0s`, ease-out curve) — mouse tracking starts after the drop completes. Methods: `update()`, `check_growth()`, `draw()`.
 - **NPCFish** — classmethod `spawn()` factory. Methods: `update()` (movement/bob/flee, returns False if off-screen), `check_eat_collision()` (returns points or None), `draw()`.
 - **Bubble** — classmethod `maybe_spawn()` factory. Methods: `update()` (physics + collision, returns False if expired), `draw()` (with pop animation stages).
 - **ScorePopup** — Methods: `update()` (drift up, returns False if expired), `draw()` (with fade).
@@ -57,4 +61,4 @@ All animations (bubbles, NPC fish) use **wall-clock time** (`time.monotonic()`) 
 
 ### Config (config.py)
 
-All magic numbers and tuning constants are centralized in `config.py`: timing intervals, spawn limits, speed ranges, growth thresholds, eat rules, popup timing, sea floor generation params, and mouse escape sequences.
+All magic numbers and tuning constants are centralized in `config.py`: timing intervals, spawn limits, speed ranges, growth thresholds, eat rules, popup timing, sea floor generation params, mouse escape sequences, and the `TITLE_ART` ASCII logo.

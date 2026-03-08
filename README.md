@@ -15,22 +15,19 @@ pip install blessed
 ## Run
 
 ```bash
-python src/game.py
+python src/game.py          # launches title screen
+python src/game.py --aqua   # skip title screen, straight to aquarium
 ```
 
-### Aquarium Mode
-
-Watch the fish swim around without a player — like ASCIIQuarium:
-
-```bash
-python src/game.py --aqua
-```
+A title screen lets you choose between **Frenzy Mode** (gameplay) and **Aquarium Mode** (passive watching). The `--aqua` flag skips the title screen.
 
 ## Controls
 
 | Input | Action |
 |-------|--------|
-| Mouse | Fish follows cursor (game mode only) |
+| Arrow keys | Navigate title screen menu |
+| Enter | Select menu option |
+| Mouse | Fish follows cursor (frenzy mode only) |
 | Q | Quit |
 
 ## Features
@@ -50,7 +47,21 @@ python src/game.py --aqua
   - Run on real wall-clock time (independent of frame rate)
 - **Sea floor** with depth layers — sand, swaying seaweed (`()` and `{}` styles), and rocks appear in front of or behind the player
 
+## Features Coming
+
+- Eating animation
+- Fish groups
+- Larger and more dangerous fishes
+- More fish varieties (always)
+
 ## Changelog
+
+### v0.4.0
+- Title screen with ASCII art logo and live aquarium background
+- Mode selection: choose Frenzy or Aquarium from the menu
+- Aquarium state carries over seamlessly when selected from title screen
+- Player drop-in animation with ease-out curve on frenzy start
+- Codebase refactored into modular OOP structure (config, entities, sea_floor)
 
 ### v0.3.0
 - Eating mechanic: swim into smaller fish to eat them and earn points
