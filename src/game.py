@@ -9,7 +9,7 @@ import select
 import sys
 import time
 
-from fish_sprites import PLAYER_SIZES, NPC_SPRITES
+from fish_sprites import PLAYER_SIZES, NPC_SPRITES, NPC_LEVELS, NPC_POINTS
 
 def main(aqua_mode=False):
     term = Terminal()
@@ -18,6 +18,10 @@ def main(aqua_mode=False):
     py = term.height // 2
     facing_right = True
     size = "small"
+    score = 0
+    score_popups = []
+    GROWTH_THRESHOLDS = {"small": 20, "medium": 50}
+    CAN_EAT = {"small": {0}, "medium": {0, 1}, "big": {0, 1}}
 
     bubbles = []
     last_bubble_time = time.monotonic()
@@ -110,13 +114,6 @@ def main(aqua_mode=False):
                         if abs(dy) > 1:
                             py += 1 if dy > 0 else -1
 
-                    if '3' in plain:
-                        size = "big"
-                    elif '2' in plain:
-                        size = "medium"
-                    elif '1' in plain:
-                        size = "small"
-
                     direction = "right" if facing_right else "left"
                     player_sprite = PLAYER_SIZES[size][direction]
                     fish_w = len(player_sprite[0])
@@ -198,7 +195,9 @@ def main(aqua_mode=False):
                 # Spawn NPC fish
                 if now - last_npc_spawn >= NPC_SPAWN_INTERVAL and len(npc_fish) < MAX_NPC:
                     last_npc_spawn = now
-                    sprite_r, sprite_l = random.choice(NPC_SPRITES)
+                    sprite_idx = random.randrange(len(NPC_SPRITES))
+                    sprite_r, sprite_l = NPC_SPRITES[sprite_idx]
+                    level = NPC_LEVELS[sprite_idx]
                     going_right = random.choice([True, False])
                     if going_right:
                         start_x = -len(sprite_r)
@@ -220,6 +219,7 @@ def main(aqua_mode=False):
                         'layer': random.choice(['back', 'front']),
                         'skittish': skittish,
                         'last_update': now,
+                        'level': level,
                     })
 
                 # Update NPC fish
@@ -272,9 +272,53 @@ def main(aqua_mode=False):
 
                     # Bob up and down
                     f['draw_y'] = f['y'] + math.sin(now * f['bob_speed'] + f['bob_offset']) * f['bob_amp']
+
+                    # Check eating collision with player
+                    if not aqua_mode:
+                        sprite = f['sprite_r'] if f['going_right'] else f['sprite_l']
+                        fx = int(f['x'])
+                        fy = int(f['draw_y'])
+                        npc_w = len(sprite)
+                        if (fx < draw_x + fish_w and fx + npc_w > draw_x and
+                                fy >= draw_y and fy < draw_y + fish_h):
+                            if f['level'] in CAN_EAT.get(size, set()):
+                                pts = NPC_POINTS[f['level']]
+                                score += pts
+                                score_popups.append({
+                                    'x': fx + npc_w // 2,
+                                    'y': float(fy),
+                                    'text': f"+{pts}",
+                                    'born': now,
+                                })
+                                continue
+
                     new_npc.append(f)
 
                 npc_fish = new_npc
+
+                # Auto-growth based on score
+                if not aqua_mode:
+                    threshold = GROWTH_THRESHOLDS.get(size)
+                    if threshold is not None and score >= threshold:
+                        if size == "small":
+                            size = "medium"
+                        elif size == "medium":
+                            size = "big"
+                        direction = "right" if facing_right else "left"
+                        player_sprite = PLAYER_SIZES[size][direction]
+                        fish_w = len(player_sprite[0])
+                        fish_h = len(player_sprite)
+                        draw_x = max(1, min(px, term.width - fish_w - 1))
+                        draw_y = max(1, min(py, term.height - fish_h - 1))
+
+                # Update score popups
+                new_popups = []
+                for p in score_popups:
+                    age = now - p['born']
+                    if age < 1.0:
+                        p['y'] -= 0.05
+                        new_popups.append(p)
+                score_popups = new_popups
 
                 # Draw frame
                 output = term.home + term.clear
@@ -292,7 +336,19 @@ def main(aqua_mode=False):
                 if aqua_mode:
                     title = " TermFrenzy Aquarium | Q:quit "
                 else:
-                    title = " TermFrenzy | Mouse:move 1/2/3:size Q:quit "
+                    threshold = GROWTH_THRESHOLDS.get(size)
+                    if threshold is not None:
+                        prev = GROWTH_THRESHOLDS.get(
+                            "small" if size == "medium" else None, 0)
+                        progress = score - prev
+                        needed = threshold - prev
+                        bar_len = 20
+                        filled = min(bar_len, int(progress / needed * bar_len))
+                        bar = '█' * filled + '░' * (bar_len - filled)
+                        grow_info = f" [{bar}]"
+                    else:
+                        grow_info = f" [{'█' * 20}]"
+                    title = f" TermFrenzy | Score:{score} | Growth:{grow_info} | Q:quit "
                 output += term.move_xy(2, 0) + title
 
                 # Sea floor - sand
@@ -396,6 +452,15 @@ def main(aqua_mode=False):
                                 cx = fx + i
                                 if 1 <= cx < term.width - 1:
                                     output += term.move_xy(cx, fy) + ch
+
+                # Draw score popups
+                for p in score_popups:
+                    ppx = int(p['x'])
+                    ppy = int(p['y'])
+                    age = now - p['born']
+                    text = p['text'] if age < 0.7 else ('.' if age < 0.85 else '')
+                    if text and 1 <= ppx < term.width - len(text) and 1 <= ppy < term.height - 1:
+                        output += term.move_xy(ppx, ppy) + text
 
                 # Sea floor - front-layer seaweed
                 for sx, sh, soff, sw_style, sw_layer in seaweeds:

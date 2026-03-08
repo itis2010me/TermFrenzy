@@ -31,14 +31,15 @@ python src/game.py --aqua
 | Input | Action |
 |-------|--------|
 | Mouse | Fish follows cursor (game mode only) |
-| 1/2/3 | Switch fish size (game mode only) |
 | Q | Quit |
 
 ## Features
 
 - **Mouse-controlled** ASCII fish that swims toward your cursor
-- Fish flips direction based on movement
-- 3 multi-row fish sizes (small 3-row, medium 4-row, big 5-row)
+- **Eat smaller fish** to earn points and auto-grow (small → medium → big)
+  - Level 0 fish (small sprites) give 2 points, level 1 fish give 5 points
+  - Grow to medium at 20 points, big at 50 points
+  - Score popup floats up from eaten fish
 - **NPC fish** with depth layers (some swim in front, some behind the player)
   - Small fish are skittish and flee from the player (but can be caught)
 - **Bubbles** that:
@@ -50,6 +51,14 @@ python src/game.py --aqua
 - **Sea floor** with depth layers — sand, swaying seaweed (`()` and `{}` styles), and rocks appear in front of or behind the player
 
 ## Changelog
+
+### v0.3.0
+- Eating mechanic: swim into smaller fish to eat them and earn points
+- Auto-growth: player grows from small → medium → big based on score
+- NPC fish split into level 0 (small, 2 pts) and level 1 (medium, 5 pts)
+- Score display in title bar
+- Floating score popups (+2, +5) on eating
+- Removed manual 1/2/3 size switching
 
 ### v0.2.0
 - Added `--aqua` aquarium mode: no player, just NPC fish swimming around
