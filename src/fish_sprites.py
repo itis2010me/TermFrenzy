@@ -51,6 +51,3 @@ NPC_SPRITES = [
     ("><(((*>", "<*)))><"),
     ("><(((°>", "<°)))><"),
 ]
-
-NPC_LEVELS = [0, 0, 0, 1, 1, 1]  # index matches NPC_SPRITES
-NPC_POINTS = {0: 2, 1: 5}
