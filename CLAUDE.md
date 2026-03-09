@@ -10,7 +10,7 @@ python src/game.py          # launches title screen (select Frenzy or Aquarium)
 python src/game.py --aqua   # skip title screen, go straight to aquarium mode
 ```
 
-The venv uses Python 3.12 and has `blessed` installed as the only dependency.
+The venv uses Python 3.12 and has `blessed` installed as the only dependency (see `requirements.txt`).
 
 ## Architecture
 
@@ -19,6 +19,8 @@ This is a terminal game inspired by PopCap's Feeding Frenzy, built with the [ble
 ### File Structure
 
 ```
+requirements.txt   — Python dependencies
+CHANGELOG.md       — version history
 src/
   game.py          — game loop orchestrator (input → update → draw)
   config.py        — all constants and tuning values
