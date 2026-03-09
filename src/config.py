@@ -54,6 +54,16 @@ SHARK_MAX_TURNS = 5
 SHARK_AGGRO_RADIUS = 20
 MAX_SHARKS = 1
 
+# Jellyfish
+JELLY_SPAWN_INTERVAL_RANGE = (12.0, 18.0)
+JELLY_RISE_SPEED = 2.0
+JELLY_DRIFT_SPEED = 1.0
+JELLY_ANIM_SPEED = 1.5
+JELLY_STING_DURATION = 1.0
+JELLY_STING_FLASH = 0.3
+JELLY_STING_SPEED = 0.3
+MAX_JELLIES = 2
+
 # NPC levels and points (indexed parallel to NPC_SPRITES in fish_sprites.py)
 NPC_LEVELS = [0, 0, 0, 1, 1, 1]
 NPC_SPAWN_WEIGHTS = [3, 3, 3, 1, 1, 1]  # small fish spawn 3x more often

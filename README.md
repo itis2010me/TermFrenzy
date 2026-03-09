@@ -52,6 +52,11 @@ A title screen lets you choose between **Frenzy Mode** (gameplay) and **Aquarium
   - Chases nearest target vertically and can turn around up to 5 times
   - Eats NPC fish on contact; eats small/medium player → game over
   - Big player can eat the shark for 10 points
+- **Jellyfish** hazard that floats upward from the sea floor
+  - Animated wavy tentacles (2-frame `()` animation)
+  - Stings player and NPC fish on contact — slows to 30% speed for 1 second
+  - Player gets a dazzling wavy `~` flash effect when stung
+  - Cannot be eaten — purely a hazard to avoid
 - **Game over & restart** — shark killing the player shows a game over screen with final score; press R to restart or Q to quit
 - **Sea floor** with depth layers — sand, swaying seaweed (`()` and `{}` styles), and rocks appear in front of or behind the player
 
@@ -62,6 +67,12 @@ A title screen lets you choose between **Frenzy Mode** (gameplay) and **Aquarium
 - More fish varieties (always)
 
 ## Changelog
+
+### v0.6.0
+- Jellyfish hazard: multi-row animated sprite, floats upward from sea floor
+- Stings player and NPC fish on contact (30% speed for 1s)
+- Wavy `~` flash effect on player when stung
+- Appears in both frenzy and aquarium modes
 
 ### v0.5.0
 - Shark predator: multi-row ASCII art, warning sign, aggro-radius chasing with turn-arounds

@@ -2,7 +2,7 @@ import math
 import random
 import time
 
-from fish_sprites import PLAYER_SIZES, NPC_SPRITES, SHARK_SPRITE_RIGHT, SHARK_SPRITE_LEFT
+from fish_sprites import PLAYER_SIZES, NPC_SPRITES, SHARK_SPRITE_RIGHT, SHARK_SPRITE_LEFT, JELLYFISH_FRAMES
 from config import (
     BUBBLE_SPAWN_CHANCE, BUBBLE_POP_DURATION,
     BUBBLE_RISE_IV_RANGE, BUBBLE_WOBBLE_IV_RANGE,
@@ -14,6 +14,8 @@ from config import (
     SHARK_SPEED_RANGE, SHARK_POINTS, SHARK_CHASE_SPEED, SHARK_MAX_TURNS,
     SHARK_WARNING_DURATION, SHARK_AGGRO_RADIUS,
     NPC_CAN_EAT, NPC_FLEE_RADIUS,
+    JELLY_RISE_SPEED, JELLY_DRIFT_SPEED, JELLY_ANIM_SPEED,
+    JELLY_STING_DURATION, JELLY_STING_SPEED, JELLY_STING_FLASH,
 )
 
 
@@ -29,6 +31,8 @@ class Player:
         self.score = 0
         self.drop_start = time.monotonic()
         self.dropping = True
+        self.stung_until = 0.0
+        self.sting_start = 0.0
         self._update_sprite()
         self.draw_x = self.px
         self.draw_y = self.py
@@ -39,9 +43,18 @@ class Player:
         self.fish_w = len(self.sprite[0])
         self.fish_h = len(self.sprite)
 
+    def apply_sting(self, now):
+        self.stung_until = now + JELLY_STING_DURATION
+        self.sting_start = now
+
+    def is_stung(self, now):
+        return now < self.stung_until
+
     def update(self, mouse_x, mouse_y, term_width, term_height):
+        now = time.monotonic()
+        stung = self.is_stung(now)
         if self.dropping:
-            elapsed = time.monotonic() - self.drop_start
+            elapsed = now - self.drop_start
             if elapsed >= self.DROP_DURATION:
                 self.dropping = False
                 self.py = self.target_y
@@ -50,7 +63,7 @@ class Player:
                 # ease-out: decelerate as it lands
                 t = 1 - (1 - t) ** 2
                 self.py = int(1 + (self.target_y - 1) * t)
-        else:
+        elif not stung or random.random() < JELLY_STING_SPEED:
             if mouse_x is not None and mouse_y is not None:
                 fish_cx = self.px + self.fish_w // 2
                 fish_cy = self.py + self.fish_h // 2
@@ -76,8 +89,12 @@ class Player:
             self._update_sprite()
 
     def draw(self, term):
+        now = time.monotonic()
+        flashing = now - self.sting_start < JELLY_STING_FLASH
         output = ''
         for i, row in enumerate(self.sprite):
+            if flashing and int(now / 0.05) % 2 == 0:
+                row = ''.join('~' if ch not in ' ' else ' ' for ch in row)
             output += term.move_xy(self.draw_x, self.draw_y + i) + row
         return output
 
@@ -101,6 +118,7 @@ class NPCFish:
         self.skittish = skittish
         self.last_update = born
         self.level = level
+        self.stung_until = 0.0
 
     @classmethod
     def spawn(cls, term_width, floor_y, now):
@@ -177,6 +195,9 @@ class NPCFish:
         dt = now - self.last_update
         self.last_update = now
 
+        stung = now < self.stung_until
+        speed = self.speed * JELLY_STING_SPEED if stung else self.speed
+
         threat_x, threat_y, threat_dist = self._find_nearest_threat(
             player, aqua_mode, npc_fish, sharks)
 
@@ -186,22 +207,27 @@ class NPCFish:
             ddx = fx - threat_x
             ddy = fy - threat_y
             dist = threat_dist
-            flee_speed = self.speed * FLEE_SPEED_MULT
+            flee_speed = speed * FLEE_SPEED_MULT
             self.x += (ddx / dist) * flee_speed * dt
             self.y += (ddy / dist) * flee_speed * dt
             self.y = max(2, min(self.y, floor_y - 3))
             self.going_right = ddx > 0
         elif self.skittish:
             if self.going_right:
-                self.x += self.speed * dt
+                self.x += speed * dt
             else:
-                self.x -= self.speed * dt
+                self.x -= speed * dt
         else:
             elapsed = now - self.born
-            if self.going_right:
-                self.x = self.start_x + self.speed * elapsed
+            if stung:
+                if self.going_right:
+                    self.x += speed * dt
+                else:
+                    self.x -= speed * dt
+            elif self.going_right:
+                self.x = self.start_x + speed * elapsed
             else:
-                self.x = self.start_x - self.speed * elapsed
+                self.x = self.start_x - speed * elapsed
 
         # Off screen?
         if self.x > term_width + 5 or self.x < -10:
@@ -502,6 +528,86 @@ class Shark:
         sprite = self.sprite_r if self.going_right else self.sprite_l
         sx = int(self.x)
         sy = int(self.draw_y)
+        for i, row in enumerate(sprite):
+            dy = sy + i
+            if 1 <= dy < term.height - 1:
+                for j, ch in enumerate(row):
+                    cx = sx + j
+                    if ch != ' ' and 1 <= cx < term.width - 1:
+                        output += term.move_xy(cx, dy) + ch
+        return output
+
+
+class Jellyfish:
+    def __init__(self, x, y, drift_dir, born):
+        self.x = float(x)
+        self.y = float(y)
+        self.drift_dir = drift_dir  # -1 or 1
+        self.born = born
+        self.last_update = born
+        self.frames = JELLYFISH_FRAMES
+        self.fish_w = max(len(row) for row in self.frames[0])
+        self.fish_h = len(self.frames[0])
+        self.draw_y = float(y)
+
+    @classmethod
+    def spawn(cls, term_width, floor_y, now):
+        w = max(len(row) for row in JELLYFISH_FRAMES[0])
+        x = random.randint(2, term_width - w - 2)
+        y = floor_y - len(JELLYFISH_FRAMES[0]) - 1
+        drift_dir = random.choice([-1, 1])
+        return cls(x, y, drift_dir, now)
+
+    def update(self, now, term_width):
+        dt = now - self.last_update
+        self.last_update = now
+
+        self.y -= JELLY_RISE_SPEED * dt
+        self.x += self.drift_dir * JELLY_DRIFT_SPEED * dt
+
+        # Bounce off walls
+        if self.x <= 1:
+            self.drift_dir = 1
+        elif self.x + self.fish_w >= term_width - 1:
+            self.drift_dir = -1
+
+        self.draw_y = self.y
+
+        # Off top of screen
+        if self.y < -(self.fish_h + 2):
+            return False
+        return True
+
+    def check_player_collision(self, player, now):
+        jx = int(self.x)
+        jy = int(self.draw_y)
+        if (jx < player.draw_x + player.fish_w and jx + self.fish_w > player.draw_x and
+                jy < player.draw_y + player.fish_h and jy + self.fish_h > player.draw_y):
+            if not player.is_stung(now):
+                player.apply_sting(now)
+                return True
+        return False
+
+    def check_npc_collision(self, npc, now):
+        jx = int(self.x)
+        jy = int(self.draw_y)
+        sprite = npc.sprite_r if npc.going_right else npc.sprite_l
+        fx = int(npc.x)
+        fy = int(npc.draw_y)
+        npc_w = len(sprite)
+        if (jx < fx + npc_w and jx + self.fish_w > fx and
+                jy < fy + 1 and jy + self.fish_h > fy):
+            if now >= npc.stung_until:
+                npc.stung_until = now + JELLY_STING_DURATION
+                return True
+        return False
+
+    def draw(self, term, now):
+        frame_idx = int(now * JELLY_ANIM_SPEED) % len(self.frames)
+        sprite = self.frames[frame_idx]
+        sx = int(self.x)
+        sy = int(self.draw_y)
+        output = ''
         for i, row in enumerate(sprite):
             dy = sy + i
             if 1 <= dy < term.height - 1:

@@ -14,8 +14,9 @@ from config import (
     ENABLE_MOUSE, DISABLE_MOUSE, NPC_POINTS,
     TITLE_ART,
     SHARK_SPAWN_INTERVAL_RANGE, MAX_SHARKS, SHARK_POINTS,
+    JELLY_SPAWN_INTERVAL_RANGE, MAX_JELLIES,
 )
-from entities import Player, NPCFish, Bubble, ScorePopup, Shark
+from entities import Player, NPCFish, Bubble, ScorePopup, Shark, Jellyfish
 from sea_floor import SeaFloor
 
 
@@ -185,6 +186,9 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
     sharks = []
     last_shark_spawn = time.monotonic()
     next_shark_interval = random.uniform(*SHARK_SPAWN_INTERVAL_RANGE)
+    jellies = []
+    last_jelly_spawn = time.monotonic()
+    next_jelly_interval = random.uniform(*JELLY_SPAWN_INTERVAL_RANGE)
     game_over = False
 
     mouse_x = None
@@ -279,6 +283,24 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
                 new_sharks.append(s)
             sharks = new_sharks
 
+            # Jellyfish spawn
+            if now - last_jelly_spawn >= next_jelly_interval and len(jellies) < MAX_JELLIES:
+                last_jelly_spawn = now
+                next_jelly_interval = random.uniform(*JELLY_SPAWN_INTERVAL_RANGE)
+                jellies.append(Jellyfish.spawn(term.width, sea.floor_y, now))
+
+            # Jellyfish update + sting
+            new_jellies = []
+            for j in jellies:
+                if not j.update(now, term.width):
+                    continue
+                if player is not None and not aqua_mode:
+                    j.check_player_collision(player, now)
+                for f in npc_fish:
+                    j.check_npc_collision(f, now)
+                new_jellies.append(j)
+            jellies = new_jellies
+
             if game_over:
                 break
 
@@ -300,6 +322,10 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
             # Bubbles
             for b in bubbles:
                 output += b.draw(term, now)
+
+            # Jellyfish
+            for j in jellies:
+                output += j.draw(term, now)
 
             if aqua_mode:
                 for f in npc_fish:
