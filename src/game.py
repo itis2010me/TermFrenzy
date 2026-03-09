@@ -63,20 +63,23 @@ def draw_title(term, player, aqua_mode):
     return term.move_xy(2, 0) + title
 
 
-def draw_aqua_frame(term, sea, bubbles, npc_fish, now):
+def draw_aqua_frame(term, sea, bubbles, npc_fish, jellies, now):
     output = term.home + term.clear
     output += draw_border(term)
     output += term.move_xy(2, 0) + " TermFrenzy "
     output += sea.draw(term, now, 'back')
     for b in bubbles:
         output += b.draw(term, now)
+    for j in jellies:
+        output += j.draw(term, now)
     for f in npc_fish:
         output += f.draw(term)
     output += sea.draw(term, now, 'front')
     return output
 
 
-def update_aqua(sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn, now, term):
+def update_aqua(sea, bubbles, npc_fish, jellies, last_bubble_time, last_npc_spawn,
+                last_jelly_spawn, next_jelly_interval, now, term):
     # Bubble spawn
     if now - last_bubble_time >= BUBBLE_INTERVAL:
         last_bubble_time = now
@@ -96,15 +99,27 @@ def update_aqua(sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn, now, t
     npc_fish[:] = [f for f in npc_fish if f.update(now, None, True, sea.floor_y, term.width,
                                                       npc_fish=npc_fish)]
 
-    return last_bubble_time, last_npc_spawn
+    # Jellyfish spawn
+    if now - last_jelly_spawn >= next_jelly_interval and len(jellies) < MAX_JELLIES:
+        last_jelly_spawn = now
+        next_jelly_interval = random.uniform(*JELLY_SPAWN_INTERVAL_RANGE)
+        jellies.append(Jellyfish.spawn(term.width, sea.floor_y, now))
+
+    # Jellyfish update
+    jellies[:] = [j for j in jellies if j.update(now, term.width)]
+
+    return last_bubble_time, last_npc_spawn, last_jelly_spawn, next_jelly_interval
 
 
 def title_screen(term, fd):
     sea = SeaFloor(term.width, term.height)
     bubbles = []
     npc_fish = []
+    jellies = []
     last_bubble_time = time.monotonic()
     last_npc_spawn = time.monotonic()
+    last_jelly_spawn = time.monotonic()
+    next_jelly_interval = random.uniform(*JELLY_SPAWN_INTERVAL_RANGE)
     selected = 0  # 0 = Frenzy, 1 = Aquarium
 
     options = ["Frenzy Mode", "Aquarium Mode"]
@@ -134,15 +149,18 @@ def title_screen(term, fd):
 
         if '\r' in plain or '\n' in plain:
             choice = 'frenzy' if selected == 0 else 'aquarium'
-            state = (sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn)
+            state = (sea, bubbles, npc_fish, jellies,
+                     last_bubble_time, last_npc_spawn,
+                     last_jelly_spawn, next_jelly_interval)
             return choice, state
 
         now = time.monotonic()
-        last_bubble_time, last_npc_spawn = update_aqua(
-            sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn, now, term)
+        last_bubble_time, last_npc_spawn, last_jelly_spawn, next_jelly_interval = update_aqua(
+            sea, bubbles, npc_fish, jellies, last_bubble_time, last_npc_spawn,
+            last_jelly_spawn, next_jelly_interval, now, term)
 
         # Draw aquarium background
-        output = draw_aqua_frame(term, sea, bubbles, npc_fish, now)
+        output = draw_aqua_frame(term, sea, bubbles, npc_fish, jellies, now)
 
         # Draw ASCII art title
         for i, line in enumerate(TITLE_ART):
@@ -174,21 +192,23 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
     player = None if aqua_mode else Player(term.width, term.height)
 
     if aqua_state is not None:
-        sea, bubbles, npc_fish, last_bubble_time, last_npc_spawn = aqua_state
+        (sea, bubbles, npc_fish, jellies,
+         last_bubble_time, last_npc_spawn,
+         last_jelly_spawn, next_jelly_interval) = aqua_state
     else:
         sea = SeaFloor(term.width, term.height)
         bubbles = []
         last_bubble_time = time.monotonic()
         npc_fish = []
         last_npc_spawn = time.monotonic()
+        jellies = []
+        last_jelly_spawn = time.monotonic()
+        next_jelly_interval = random.uniform(*JELLY_SPAWN_INTERVAL_RANGE)
 
     score_popups = []
     sharks = []
     last_shark_spawn = time.monotonic()
     next_shark_interval = random.uniform(*SHARK_SPAWN_INTERVAL_RANGE)
-    jellies = []
-    last_jelly_spawn = time.monotonic()
-    next_jelly_interval = random.uniform(*JELLY_SPAWN_INTERVAL_RANGE)
     game_over = False
 
     mouse_x = None

@@ -62,6 +62,7 @@ A title screen lets you choose between **Frenzy Mode** (gameplay) and **Aquarium
 
 ## Features Coming
 
+- Levels
 - Eating animation
 - Fish groups
 - More fish varieties (always)

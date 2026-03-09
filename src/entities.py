@@ -399,6 +399,7 @@ class Shark:
         self.born = born
         self.warning_until = born + SHARK_WARNING_DURATION
         self.active = False
+        self.active_since = 0.0
         self.last_update = born
         self.sprite_r = SHARK_SPRITE_RIGHT
         self.sprite_l = SHARK_SPRITE_LEFT
@@ -453,13 +454,16 @@ class Shark:
         if not self.active:
             if now >= self.warning_until:
                 self.active = True
+                self.active_since = now
                 self.last_update = now
             return True
 
         dt = now - self.last_update
         self.last_update = now
 
-        target_x, target_y = self._find_nearest_target(npc_fish, player)
+        # Only chase after being active for 2 seconds
+        chasing = now - self.active_since >= 2.0
+        target_x, target_y = self._find_nearest_target(npc_fish, player) if chasing else (None, None)
 
         # Turn around to chase target (up to max turns)
         if self.turns_remaining > 0 and target_x is not None:
