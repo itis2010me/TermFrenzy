@@ -393,6 +393,7 @@ class Shark:
 
     def __init__(self, going_right, start_x, y, speed, born, term_width):
         self.going_right = going_right
+        self.preferred_right = going_right
         self.x = float(start_x)
         self.y = float(y)
         self.speed = speed
@@ -465,13 +466,15 @@ class Shark:
         chasing = now - self.active_since >= 2.0
         target_x, target_y = self._find_nearest_target(npc_fish, player) if chasing else (None, None)
 
-        # Turn around to chase target (up to max turns)
+        # Turn around to chase target (up to max turns), or revert to preferred direction
         if self.turns_remaining > 0 and target_x is not None:
             shark_cx = self.x + self.fish_w / 2
             target_is_right = target_x > shark_cx
             if target_is_right != self.going_right:
                 self.going_right = target_is_right
                 self.turns_remaining -= 1
+        elif self.going_right != self.preferred_right:
+            self.going_right = self.preferred_right
 
         # Horizontal: constant speed in facing direction
         if self.going_right:
@@ -505,12 +508,20 @@ class Shark:
         return (sx < fx + npc_w and sx + self.fish_w > fx and
                 sy < fy + 1 and sy + self.fish_h > fy)
 
+    def _mouth_hitbox(self):
+        """Return (x, w) for the front half of the shark (the mouth)."""
+        half_w = self.fish_w // 2
+        if self.going_right:
+            return int(self.x) + half_w, half_w
+        else:
+            return int(self.x), half_w
+
     def check_player_collision(self, player):
         if not self.active:
             return None
-        sx = int(self.x)
+        mouth_x, mouth_w = self._mouth_hitbox()
         sy = int(self.draw_y)
-        if not (sx < player.draw_x + player.fish_w and sx + self.fish_w > player.draw_x and
+        if not (mouth_x < player.draw_x + player.fish_w and mouth_x + mouth_w > player.draw_x and
                 sy < player.draw_y + player.fish_h and sy + self.fish_h > player.draw_y):
             return None
         if player.size == "big":

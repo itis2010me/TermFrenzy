@@ -247,10 +247,17 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
             # Bubble update
             bubbles = [b for b in bubbles if b.update(now, term.width, player, npc_fish, aqua_mode)]
 
-            # NPC spawn
+            # NPC spawn (avoid spawning near a shark's entry point)
             if now - last_npc_spawn >= NPC_SPAWN_INTERVAL and len(npc_fish) < MAX_NPC:
                 last_npc_spawn = now
-                npc_fish.append(NPCFish.spawn(term.width, sea.floor_y, now))
+                f = NPCFish.spawn(term.width, sea.floor_y, now)
+                too_close = False
+                for s in sharks:
+                    if s.going_right == f.going_right and abs(f.y - s.warning_y) < 15:
+                        too_close = True
+                        break
+                if not too_close:
+                    npc_fish.append(f)
 
             # NPC update + eat
             new_npc = []
