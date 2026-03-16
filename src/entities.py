@@ -13,7 +13,7 @@ from config import (
     POPUP_DRIFT_SPEED, POPUP_LIFETIME, POPUP_FADE_TIME, POPUP_VANISH_TIME,
     SHARK_SPEED_RANGE, SHARK_POINTS, SHARK_CHASE_SPEED, SHARK_MAX_TURNS,
     SHARK_WARNING_DURATION, SHARK_AGGRO_RADIUS,
-    NPC_CAN_EAT, NPC_FLEE_RADIUS,
+    NPC_FLEE_RADIUS,
     JELLY_RISE_SPEED, JELLY_DRIFT_SPEED, JELLY_ANIM_SPEED,
     JELLY_STING_DURATION, JELLY_STING_SPEED, JELLY_STING_FLASH,
 )
@@ -163,25 +163,10 @@ class NPCFish:
                 px = player.draw_x + player.fish_w / 2
                 py = player.draw_y + player.fish_h / 2
                 dist = math.sqrt((fx - px) ** 2 + (fy - py) ** 2)
-                if dist < FLEE_RADIUS and dist < best_dist:
+                if dist < NPC_FLEE_RADIUS.get(self.level, 10) and dist < best_dist:
                     best_dist = dist
                     threat_x = px
                     threat_y = py
-
-        # Flee from larger NPC fish
-        for other in npc_fish:
-            if other is self:
-                continue
-            eatable_levels = NPC_CAN_EAT.get(other.level, set())
-            if self.level not in eatable_levels:
-                continue
-            ox = other.x + len(other.sprite_r) / 2
-            oy = other.draw_y
-            dist = math.sqrt((fx - ox) ** 2 + (fy - oy) ** 2)
-            if dist < NPC_FLEE_RADIUS and dist < best_dist:
-                best_dist = dist
-                threat_x = ox
-                threat_y = oy
 
         # Flee from active sharks
         for s in sharks:
@@ -190,7 +175,7 @@ class NPCFish:
             sx = s.x + s.fish_w / 2
             sy = s.draw_y + s.fish_h / 2
             dist = math.sqrt((fx - sx) ** 2 + (fy - sy) ** 2)
-            if dist < NPC_FLEE_RADIUS and dist < best_dist:
+            if dist < NPC_FLEE_RADIUS.get(self.level, 10) and dist < best_dist:
                 best_dist = dist
                 threat_x = sx
                 threat_y = sy
@@ -216,8 +201,14 @@ class NPCFish:
             flee_speed = speed * FLEE_SPEED_MULT
             self.x += (ddx / dist) * flee_speed * dt
             self.y += (ddy / dist) * flee_speed * dt
+            sprite_w = len(self.sprite_r)
+            self.x = max(-sprite_w + 1, min(self.x, term_width - 1))
             self.y = max(2, min(self.y, floor_y - 3))
-            self.going_right = ddx > 0
+            new_right = ddx > 0
+            if new_right != self.going_right:
+                self.start_x = self.x
+                self.born = now
+                self.going_right = new_right
         elif self.skittish:
             if self.going_right:
                 self.x += speed * dt

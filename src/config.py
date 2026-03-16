@@ -70,7 +70,7 @@ NPC_SPAWN_WEIGHTS = [3, 3, 3, 1, 1, 1]  # small fish spawn 3x more often
 NPC_POINTS = {0: 2, 1: 5}
 # Which NPC levels can eat which other NPC levels
 NPC_CAN_EAT = {1: {0}}  # level 1 fish can eat level 0 fish
-NPC_FLEE_RADIUS = 10
+NPC_FLEE_RADIUS = {0: 10, 1: 14}  # per-level flee radius
 
 # Title screen
 # https://patorjk.com/software/taag/#p=display&f=Classy&t=TermFrenzy&x=none&v=4&h=4&w=80&we=false
