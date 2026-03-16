@@ -33,11 +33,14 @@ class SeaFloor:
             self.rocks.append((x, style, random.choice(['back', 'front'])))
 
     def draw(self, term, now, layer):
+        seaweed_color = term.color_rgb(0, 200, 0)
+        sand_color = term.yellow
+        rock_color = term.color_rgb(150, 150, 150)
         output = ''
 
         # Sand (only on back layer to avoid double-drawing)
         if layer == 'back':
-            output += term.move_xy(1, self.floor_y) + self.sand_row
+            output += term.move_xy(1, self.floor_y) + sand_color(self.sand_row)
 
         # Seaweed
         for sx, sh, soff, sw_style, sw_layer in self.seaweeds:
@@ -49,7 +52,7 @@ class SeaFloor:
                 draw_sy = self.floor_y - 1 - j
                 if 1 <= draw_sx < term.width - 1 and 1 <= draw_sy < term.height - 1:
                     leaf = sw_style[0] if (j + int(now * SEAWEED_ANIM_SPEED)) % 2 == 0 else sw_style[1]
-                    output += term.move_xy(draw_sx, draw_sy) + leaf
+                    output += term.move_xy(draw_sx, draw_sy) + seaweed_color(leaf)
 
         # Rocks
         for rx, rstyle, rlayer in self.rocks:
@@ -57,10 +60,10 @@ class SeaFloor:
                 continue
             if rstyle == 'small':
                 if 1 <= rx < term.width - 2:
-                    output += term.move_xy(rx, self.floor_y - 1) + '/\\'
+                    output += term.move_xy(rx, self.floor_y - 1) + rock_color('/\\')
             else:
                 if 1 <= rx < term.width - 3:
-                    output += term.move_xy(rx, self.floor_y - 1) + '/~~\\'
-                    output += term.move_xy(rx - 1, self.floor_y - 2) + '/    \\'
+                    output += term.move_xy(rx, self.floor_y - 1) + rock_color('/~~\\')
+                    output += term.move_xy(rx - 1, self.floor_y - 2) + rock_color('/    \\')
 
         return output

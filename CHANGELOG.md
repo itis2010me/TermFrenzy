@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.0
+- Added color to sea floor: yellow sand, green seaweed, grey rocks
+- Bubbles are now blue with bright blue pop animation
+- Small NPC fish randomly colored orange or blue
+- Medium NPC fish colored purple
+- Shark colored grey with bright red warning sign
+
 ## v0.6.0
 - Jellyfish hazard: multi-row animated sprite, floats upward from sea floor
 - Stings player and NPC fish on contact (30% speed for 1s)

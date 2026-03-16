@@ -100,8 +100,11 @@ class Player:
 
 
 class NPCFish:
+    SMALL_COLORS = ['orange', 'blue']
+
     def __init__(self, sprite_r, sprite_l, going_right, start_x, y, speed,
-                 bob_amp, bob_speed, bob_offset, born, layer, skittish, level):
+                 bob_amp, bob_speed, bob_offset, born, layer, skittish, level,
+                 color_name=None):
         self.x = float(start_x)
         self.start_x = float(start_x)
         self.y = y
@@ -119,6 +122,7 @@ class NPCFish:
         self.last_update = born
         self.level = level
         self.stung_until = 0.0
+        self.color_name = color_name
 
     @classmethod
     def spawn(cls, term_width, floor_y, now):
@@ -128,6 +132,7 @@ class NPCFish:
         going_right = random.choice([True, False])
         start_x = -len(sprite_r) if going_right else term_width
         skittish = len(sprite_r) <= 3
+        color_name = random.choice(cls.SMALL_COLORS) if level == 0 else 'bright_magenta'
         return cls(
             sprite_r=sprite_r,
             sprite_l=sprite_l,
@@ -142,6 +147,7 @@ class NPCFish:
             layer=random.choice(['back', 'front']),
             skittish=skittish,
             level=level,
+            color_name=color_name,
         )
 
     def _find_nearest_threat(self, player, aqua_mode, npc_fish, sharks):
@@ -250,6 +256,7 @@ class NPCFish:
 
     def draw(self, term):
         sprite = self.sprite_r if self.going_right else self.sprite_l
+        fish_color = getattr(term, self.color_name) if self.color_name else None
         fx = int(self.x)
         fy = int(self.draw_y)
         output = ''
@@ -257,7 +264,7 @@ class NPCFish:
             for i, ch in enumerate(sprite):
                 cx = fx + i
                 if 1 <= cx < term.width - 1:
-                    output += term.move_xy(cx, fy) + ch
+                    output += term.move_xy(cx, fy) + (fish_color(ch) if fish_color else ch)
         return output
 
 
@@ -327,6 +334,8 @@ class Bubble:
         return True
 
     def draw(self, term, now):
+        bubble_color = term.blue
+        pop_color = term.bright_blue
         output = ''
         bx, by = self.x, self.y
 
@@ -334,18 +343,18 @@ class Bubble:
             elapsed = now - self.pop_start
             if elapsed < 0.1:
                 if 1 <= bx < term.width - 1 and 1 <= by < term.height - 1:
-                    output += term.move_xy(bx, by) + '*'
+                    output += term.move_xy(bx, by) + pop_color('*')
             elif elapsed < 0.25:
                 for dx, dy, ch in [(-1,0,'-'), (1,0,'-'), (0,-1,'|'), (0,1,'|'),
                                     (-1,-1,'\''), (1,-1,'\''), (-1,1,'.'), (1,1,'.')]:
                     sx, sy = bx + dx, by + dy
                     if 1 <= sx < term.width - 1 and 1 <= sy < term.height - 1:
-                        output += term.move_xy(sx, sy) + ch
+                        output += term.move_xy(sx, sy) + pop_color(ch)
             elif elapsed < 0.4:
                 for dx, dy in [(-2,0), (2,0), (0,-1), (0,1)]:
                     sx, sy = bx + dx, by + dy
                     if 1 <= sx < term.width - 1 and 1 <= sy < term.height - 1:
-                        output += term.move_xy(sx, sy) + '\u00b7'
+                        output += term.move_xy(sx, sy) + pop_color('\u00b7')
         else:
             if self.age < 0.6:
                 ch = '.'
@@ -354,7 +363,7 @@ class Bubble:
             else:
                 ch = 'O'
             if 1 <= bx < term.width - 1 and 1 <= by < term.height - 1:
-                output += term.move_xy(bx, by) + ch
+                output += term.move_xy(bx, by) + bubble_color(ch)
 
         return output
 
@@ -529,6 +538,8 @@ class Shark:
         return 'eaten'
 
     def draw(self, term, now):
+        shark_color = term.color_rgb(100, 100, 100)
+        warning_color = term.bright_red
         output = ''
         if not self.active:
             # Flashing warning sign
@@ -537,7 +548,7 @@ class Shark:
                     dy = self.warning_y - 1 + i
                     wx = self.warning_x
                     if 1 <= dy < term.height - 1 and 1 <= wx < term.width - len(line):
-                        output += term.move_xy(wx, dy) + line
+                        output += term.move_xy(wx, dy) + warning_color(line)
             return output
 
         sprite = self.sprite_r if self.going_right else self.sprite_l
@@ -549,7 +560,7 @@ class Shark:
                 for j, ch in enumerate(row):
                     cx = sx + j
                     if ch != ' ' and 1 <= cx < term.width - 1:
-                        output += term.move_xy(cx, dy) + ch
+                        output += term.move_xy(cx, dy) + shark_color(ch)
         return output
 
 
