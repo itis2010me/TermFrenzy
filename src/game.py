@@ -15,8 +15,10 @@ from config import (
     TITLE_ART,
     SHARK_SPAWN_INTERVAL_RANGE, MAX_SHARKS, SHARK_POINTS,
     JELLY_SPAWN_INTERVAL_RANGE, MAX_JELLIES,
+    GOLD_FISH_SPAWN_INTERVAL_RANGE, GOLD_FRENZY_POINT_MULT, JELLY_POINTS,
+    GOLD_SPARKLE_SPAWN_RATE, GOLD_SPARKLE_MAX,
 )
-from entities import Player, NPCFish, Bubble, ScorePopup, Shark, Jellyfish
+from entities import Player, NPCFish, Bubble, ScorePopup, Shark, Jellyfish, GoldSparkle
 from sea_floor import SeaFloor
 
 
@@ -44,7 +46,7 @@ def draw_border(term):
     return output
 
 
-def draw_title(term, player, aqua_mode):
+def draw_title(term, player, aqua_mode, now=0.0):
     if aqua_mode:
         title = " TermFrenzy Aquarium | Q:quit "
     else:
@@ -60,7 +62,15 @@ def draw_title(term, player, aqua_mode):
         else:
             grow_info = f" [{'\u2588' * GROWTH_BAR_LEN}]"
         title = f" TermFrenzy | Score:{player.score} | Growth:{grow_info} | Q:quit "
-    return term.move_xy(2, 0) + title
+    output = term.move_xy(2, 0) + title
+    if not aqua_mode and player is not None and player.is_gold_frenzy(now):
+        remaining = player.gold_frenzy_until - now
+        frenzy_text = f" GOLD FRENZY {remaining:.1f}s"
+        if int(now * 4) % 2 == 0:
+            output += term.bold_yellow(frenzy_text)
+        else:
+            output += term.yellow(frenzy_text)
+    return output
 
 
 def draw_aqua_frame(term, sea, bubbles, npc_fish, jellies, now):
@@ -209,6 +219,10 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
     sharks = []
     last_shark_spawn = time.monotonic()
     next_shark_interval = random.uniform(*SHARK_SPAWN_INTERVAL_RANGE)
+    last_gold_spawn = time.monotonic()
+    next_gold_interval = random.uniform(*GOLD_FISH_SPAWN_INTERVAL_RANGE)
+    gold_sparkles = []
+    last_sparkle_spawn = 0.0
     game_over = False
 
     mouse_x = None
@@ -259,16 +273,41 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
                 if not too_close:
                     npc_fish.append(f)
 
+            # Gold fish spawn (frenzy only)
+            if not aqua_mode:
+                gold_on_screen = any(f.is_gold for f in npc_fish)
+                if not gold_on_screen and now - last_gold_spawn >= next_gold_interval:
+                    last_gold_spawn = now
+                    next_gold_interval = random.uniform(*GOLD_FISH_SPAWN_INTERVAL_RANGE)
+                    npc_fish.append(NPCFish.spawn_gold(term.width, sea.floor_y, now))
+
             # NPC update + eat
+            gold_frenzy_active = player is not None and player.is_gold_frenzy(now)
             new_npc = []
             for f in npc_fish:
                 if not f.update(now, player, aqua_mode, sea.floor_y, term.width,
                                 npc_fish=npc_fish, sharks=sharks):
                     continue
+                # Gold fish leaves a constant short trail of sparkles
+                if f.is_gold:
+                    # Remove oldest trail sparkle if at limit
+                    trail_count = sum(1 for s in gold_sparkles if s.is_trail)
+                    if trail_count >= GoldSparkle.TRAIL_MAX:
+                        for idx, s in enumerate(gold_sparkles):
+                            if s.is_trail:
+                                gold_sparkles.pop(idx)
+                                break
+                    sprite = f.sprite_r if f.going_right else f.sprite_l
+                    trail_x = int(f.x) if f.going_right else int(f.x) + len(sprite)
+                    trail_y = int(f.draw_y)
+                    if 1 <= trail_x < term.width - 1 and 1 <= trail_y < term.height - 1:
+                        gold_sparkles.append(GoldSparkle.maybe_spawn_at(trail_x, trail_y, now))
                 if player is not None:
-                    pts = f.check_eat_collision(player)
+                    pts = f.check_eat_collision(player, gold_frenzy=gold_frenzy_active)
                     if pts is not None:
                         player.score += pts
+                        if f.is_gold:
+                            player.activate_gold_frenzy(now)
                         sprite = f.sprite_r if f.going_right else f.sprite_l
                         score_popups.append(ScorePopup(
                             int(f.x) + len(sprite) // 2,
@@ -296,14 +335,17 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
                     npc_fish = [f for f in npc_fish if not s.check_npc_collision(f)]
                 if s.active and player is not None:
                     result = s.check_player_collision(player)
+                    if gold_frenzy_active and result == 'eaten':
+                        result = 'killed'
                     if result == 'eaten':
                         game_over = True
                     elif result == 'killed':
-                        player.score += SHARK_POINTS
+                        pts = SHARK_POINTS * (GOLD_FRENZY_POINT_MULT if gold_frenzy_active else 1)
+                        player.score += pts
                         score_popups.append(ScorePopup(
                             int(s.x) + s.fish_w // 2,
                             int(s.draw_y),
-                            f"+{SHARK_POINTS}",
+                            f"+{pts}",
                             now,
                         ))
                         continue
@@ -316,16 +358,32 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
                 next_jelly_interval = random.uniform(*JELLY_SPAWN_INTERVAL_RANGE)
                 jellies.append(Jellyfish.spawn(term.width, sea.floor_y, now))
 
-            # Jellyfish update + sting
+            # Jellyfish update + sting/eat
             new_jellies = []
             for j in jellies:
                 if not j.update(now, term.width):
                     continue
+                eaten = False
                 if player is not None and not aqua_mode:
-                    j.check_player_collision(player, now)
+                    if gold_frenzy_active:
+                        jx = int(j.x)
+                        jy = int(j.draw_y)
+                        if (jx < player.draw_x + player.fish_w and
+                                jx + j.fish_w > player.draw_x and
+                                jy < player.draw_y + player.fish_h and
+                                jy + j.fish_h > player.draw_y):
+                            pts = JELLY_POINTS * GOLD_FRENZY_POINT_MULT
+                            player.score += pts
+                            score_popups.append(ScorePopup(
+                                jx + j.fish_w // 2, int(j.draw_y),
+                                f"+{pts}", now))
+                            eaten = True
+                    if not eaten:
+                        j.check_player_collision(player, now)
                 for f in npc_fish:
                     j.check_npc_collision(f, now)
-                new_jellies.append(j)
+                if not eaten:
+                    new_jellies.append(j)
             jellies = new_jellies
 
             if game_over:
@@ -338,21 +396,28 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
             # Popup update
             score_popups = [p for p in score_popups if p.update(now)]
 
+            # Gold sparkles
+            if gold_frenzy_active:
+                if now - last_sparkle_spawn >= GOLD_SPARKLE_SPAWN_RATE and len(gold_sparkles) < GOLD_SPARKLE_MAX:
+                    last_sparkle_spawn = now
+                    gold_sparkles.append(GoldSparkle.maybe_spawn(now, term.width, term.height))
+            gold_sparkles = [s for s in gold_sparkles if s.update(now)]
+
             # --- DRAW ---
             output = term.home + term.clear
             output += draw_border(term)
-            output += draw_title(term, player, aqua_mode)
+            output += draw_title(term, player, aqua_mode, now)
 
             # Sea floor back layer
             output += sea.draw(term, now, 'back')
 
             # Bubbles
             for b in bubbles:
-                output += b.draw(term, now)
+                output += b.draw(term, now, gold_frenzy=gold_frenzy_active)
 
             # Jellyfish
             for j in jellies:
-                output += j.draw(term, now)
+                output += j.draw(term, now, gold_frenzy=gold_frenzy_active)
 
             if aqua_mode:
                 for f in npc_fish:
@@ -361,7 +426,7 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
                 # Back-layer NPC
                 for f in npc_fish:
                     if f.layer == 'back':
-                        output += f.draw(term)
+                        output += f.draw(term, gold_frenzy=gold_frenzy_active)
 
                 # Player
                 output += player.draw(term)
@@ -369,15 +434,19 @@ def main(term, fd, aqua_mode=False, aqua_state=None):
                 # Front-layer NPC
                 for f in npc_fish:
                     if f.layer == 'front':
-                        output += f.draw(term)
+                        output += f.draw(term, gold_frenzy=gold_frenzy_active)
 
                 # Sharks
                 for s in sharks:
-                    output += s.draw(term, now)
+                    output += s.draw(term, now, gold_frenzy=gold_frenzy_active)
 
             # Score popups
             for p in score_popups:
                 output += p.draw(term, now)
+
+            # Gold sparkles
+            for s in gold_sparkles:
+                output += s.draw(term, now)
 
             # Sea floor front layer
             output += sea.draw(term, now, 'front')

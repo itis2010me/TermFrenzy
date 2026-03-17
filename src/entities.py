@@ -16,6 +16,10 @@ from config import (
     NPC_FLEE_RADIUS,
     JELLY_RISE_SPEED, JELLY_DRIFT_SPEED, JELLY_ANIM_SPEED,
     JELLY_STING_DURATION, JELLY_STING_SPEED, JELLY_STING_FLASH,
+    GOLD_FISH_SPEED_RANGE, GOLD_FRENZY_DURATION, GOLD_FRENZY_COLOR,
+    GOLD_FRENZY_POINT_MULT,
+    GOLD_SPARKLE_CHARS, GOLD_SPARKLE_RISE_SPEED, GOLD_SPARKLE_DRIFT_RANGE,
+    GOLD_SPARKLE_LIFETIME,
 )
 
 
@@ -33,6 +37,7 @@ class Player:
         self.dropping = True
         self.stung_until = 0.0
         self.sting_start = 0.0
+        self.gold_frenzy_until = 0.0
         self._update_sprite()
         self.draw_x = self.px
         self.draw_y = self.py
@@ -49,6 +54,12 @@ class Player:
 
     def is_stung(self, now):
         return now < self.stung_until
+
+    def activate_gold_frenzy(self, now):
+        self.gold_frenzy_until = now + GOLD_FRENZY_DURATION
+
+    def is_gold_frenzy(self, now):
+        return now < self.gold_frenzy_until
 
     def update(self, mouse_x, mouse_y, term_width, term_height):
         now = time.monotonic()
@@ -91,11 +102,17 @@ class Player:
     def draw(self, term):
         now = time.monotonic()
         flashing = now - self.sting_start < JELLY_STING_FLASH
+        gold_active = self.is_gold_frenzy(now)
         output = ''
         for i, row in enumerate(self.sprite):
             if flashing and int(now / 0.05) % 2 == 0:
                 row = ''.join('~' if ch not in ' ' else ' ' for ch in row)
-            output += term.move_xy(self.draw_x, self.draw_y + i) + row
+            rendered = term.move_xy(self.draw_x, self.draw_y + i)
+            if gold_active:
+                rendered += term.yellow(row)
+            else:
+                rendered += row
+            output += rendered
         return output
 
 
@@ -104,7 +121,7 @@ class NPCFish:
 
     def __init__(self, sprite_r, sprite_l, going_right, start_x, y, speed,
                  bob_amp, bob_speed, bob_offset, born, layer, skittish, level,
-                 color_name=None):
+                 color_name=None, is_gold=False):
         self.x = float(start_x)
         self.start_x = float(start_x)
         self.y = y
@@ -123,6 +140,7 @@ class NPCFish:
         self.level = level
         self.stung_until = 0.0
         self.color_name = color_name
+        self.is_gold = is_gold
 
     @classmethod
     def spawn(cls, term_width, floor_y, now):
@@ -150,7 +168,33 @@ class NPCFish:
             color_name=color_name,
         )
 
+    @classmethod
+    def spawn_gold(cls, term_width, floor_y, now):
+        sprite_idx = random.choice([0, 1, 2])  # always small
+        sprite_r, sprite_l = NPC_SPRITES[sprite_idx]
+        going_right = random.choice([True, False])
+        start_x = -len(sprite_r) if going_right else term_width
+        return cls(
+            sprite_r=sprite_r,
+            sprite_l=sprite_l,
+            going_right=going_right,
+            start_x=start_x,
+            y=random.randint(2, floor_y - 3),
+            speed=random.uniform(*GOLD_FISH_SPEED_RANGE),
+            bob_amp=random.uniform(*NPC_BOB_AMP_RANGE),
+            bob_speed=random.uniform(*NPC_BOB_SPEED_RANGE),
+            bob_offset=random.random() * 6.28,
+            born=now,
+            layer='front',
+            skittish=False,
+            level=0,
+            color_name=GOLD_FRENZY_COLOR,
+            is_gold=True,
+        )
+
     def _find_nearest_threat(self, player, aqua_mode, npc_fish, sharks):
+        if self.is_gold:
+            return None, None, float('inf')
         fx = self.x + len(self.sprite_r) / 2
         fy = self.y
         best_dist = float('inf')
@@ -234,20 +278,29 @@ class NPCFish:
         self.draw_y = self.y + math.sin(now * self.bob_speed + self.bob_offset) * self.bob_amp
         return True
 
-    def check_eat_collision(self, player):
+    def check_eat_collision(self, player, gold_frenzy=False):
         sprite = self.sprite_r if self.going_right else self.sprite_l
         fx = int(self.x)
         fy = int(self.draw_y)
         npc_w = len(sprite)
         if (fx < player.draw_x + player.fish_w and fx + npc_w > player.draw_x and
                 fy >= player.draw_y and fy < player.draw_y + player.fish_h):
-            if self.level in CAN_EAT.get(player.size, set()):
-                return NPC_POINTS[self.level]
+            if gold_frenzy or self.is_gold or self.level in CAN_EAT.get(player.size, set()):
+                pts = NPC_POINTS[self.level]
+                if gold_frenzy and not self.is_gold:
+                    pts *= GOLD_FRENZY_POINT_MULT
+                return pts
         return None
 
-    def draw(self, term):
+    def draw(self, term, gold_frenzy=False):
         sprite = self.sprite_r if self.going_right else self.sprite_l
-        fish_color = getattr(term, self.color_name) if self.color_name else None
+        if gold_frenzy or self.is_gold:
+            now = time.monotonic()
+            fish_color = term.bold_yellow if int(now * 4) % 2 == 0 else term.yellow
+        elif self.color_name:
+            fish_color = getattr(term, self.color_name)
+        else:
+            fish_color = None
         fx = int(self.x)
         fy = int(self.draw_y)
         output = ''
@@ -324,11 +377,32 @@ class Bubble:
 
         return True
 
-    def draw(self, term, now):
-        bubble_color = term.blue
-        pop_color = term.bright_blue
+    def draw(self, term, now, gold_frenzy=False):
         output = ''
         bx, by = self.x, self.y
+
+        if gold_frenzy:
+            # Render as gold sparkle instead of bubble
+            sparkle_color = term.bold_yellow if int(now * 4) % 2 == 0 else term.yellow
+            sparkle_chars = GOLD_SPARKLE_CHARS
+            ch = sparkle_chars[int(now * 3 + bx) % len(sparkle_chars)]
+            if self.popping:
+                elapsed = now - self.pop_start
+                if elapsed < 0.15:
+                    for dx, dy in [(-1,0), (1,0), (0,-1), (0,1)]:
+                        sx, sy = bx + dx, by + dy
+                        if 1 <= sx < term.width - 1 and 1 <= sy < term.height - 1:
+                            output += term.move_xy(sx, sy) + sparkle_color(random.choice(sparkle_chars))
+                elif elapsed < 0.3:
+                    if 1 <= bx < term.width - 1 and 1 <= by < term.height - 1:
+                        output += term.move_xy(bx, by) + sparkle_color('·')
+            else:
+                if 1 <= bx < term.width - 1 and 1 <= by < term.height - 1:
+                    output += term.move_xy(bx, by) + sparkle_color(ch)
+            return output
+
+        bubble_color = term.blue
+        pop_color = term.bright_blue
 
         if self.popping:
             elapsed = now - self.pop_start
@@ -528,8 +602,11 @@ class Shark:
             return 'killed'
         return 'eaten'
 
-    def draw(self, term, now):
-        shark_color = term.color_rgb(100, 100, 100)
+    def draw(self, term, now, gold_frenzy=False):
+        if gold_frenzy:
+            shark_color = term.bold_yellow if int(now * 4) % 2 == 0 else term.yellow
+        else:
+            shark_color = term.color_rgb(100, 100, 100)
         warning_color = term.bright_red
         output = ''
         if not self.active:
@@ -619,9 +696,10 @@ class Jellyfish:
                 return True
         return False
 
-    def draw(self, term, now):
+    def draw(self, term, now, gold_frenzy=False):
         frame_idx = int(now * JELLY_ANIM_SPEED) % len(self.frames)
         sprite = self.frames[frame_idx]
+        jelly_color = term.yellow if gold_frenzy else None
         sx = int(self.x)
         sy = int(self.draw_y)
         output = ''
@@ -631,5 +709,55 @@ class Jellyfish:
                 for j, ch in enumerate(row):
                     cx = sx + j
                     if ch != ' ' and 1 <= cx < term.width - 1:
-                        output += term.move_xy(cx, dy) + ch
+                        output += term.move_xy(cx, dy) + (jelly_color(ch) if jelly_color else ch)
         return output
+
+
+class GoldSparkle:
+    TRAIL_MAX = 5
+
+    def __init__(self, x, y, now, is_trail=False):
+        self.x = float(x)
+        self.y = float(y)
+        self.born = now
+        self.last_update = now
+        self.ch = random.choice(GOLD_SPARKLE_CHARS)
+        self.drift = random.uniform(*GOLD_SPARKLE_DRIFT_RANGE)
+        self.is_trail = is_trail
+
+    @classmethod
+    def maybe_spawn(cls, now, term_width, term_height):
+        x = random.randint(2, term_width - 3)
+        y = random.randint(2, term_height - 3)
+        return cls(x, y, now)
+
+    @classmethod
+    def maybe_spawn_at(cls, x, y, now):
+        return cls(x, y, now, is_trail=True)
+
+    TRAIL_LIFETIME = 0.5
+
+    def update(self, now):
+        dt = now - self.last_update
+        self.last_update = now
+        lifetime = self.TRAIL_LIFETIME if self.is_trail else GOLD_SPARKLE_LIFETIME
+        if not self.is_trail:
+            self.y -= GOLD_SPARKLE_RISE_SPEED * dt
+            self.x += self.drift * dt
+        if now - self.born >= lifetime:
+            return False
+        return True
+
+    def draw(self, term, now):
+        age = now - self.born
+        lifetime = self.TRAIL_LIFETIME if self.is_trail else GOLD_SPARKLE_LIFETIME
+        # Fade: bright at start, dim near end
+        if age < lifetime * 0.6:
+            color = term.bold_yellow
+        else:
+            color = term.yellow
+        sx = int(self.x)
+        sy = int(self.y)
+        if 1 <= sx < term.width - 1 and 1 <= sy < term.height - 1:
+            return term.move_xy(sx, sy) + color(self.ch)
+        return ''

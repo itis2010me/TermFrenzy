@@ -61,7 +61,16 @@ A title screen lets you choose between **Frenzy Mode** (gameplay) and **Aquarium
   - Animated wavy tentacles (2-frame `()` animation)
   - Stings player and NPC fish on contact — slows to 30% speed for 1 second
   - Player gets a dazzling wavy `~` flash effect when stung
-  - Cannot be eaten — purely a hazard to avoid
+  - Cannot be eaten — unless Gold Frenzy is active
+- **Gold Fish** — rare, fast-swimming golden fish with a sparkle trail
+  - Spawns every 45-60 seconds, zooms across the screen
+  - Any player size can eat it — the challenge is catching it
+  - Eating it triggers **Gold Frenzy** for 10 seconds:
+    - All fish, jellyfish, sharks, and bubbles turn gold
+    - Player can eat anything — larger fish, jellyfish, even sharks
+    - All points are doubled
+    - Gold sparkle particles fill the screen
+    - Flashing "GOLD FRENZY" countdown in the title bar
 - **Game over & restart** — shark killing the player shows a game over screen with final score; press R to restart or Q to quit
 - **Sea floor** with depth layers — sand, swaying seaweed (`()` and `{}` styles), and rocks appear in front of or behind the player
 

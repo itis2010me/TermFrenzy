@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.0
+- Gold fish: rare fast-swimming golden NPC with sparkle trail, spawns every 45-60s in frenzy mode
+- Gold Frenzy power-up: eating the gold fish triggers a 10s frenzy mode
+  - All entities (NPC fish, jellyfish, sharks, bubbles, player) turn gold
+  - Player can eat any fish regardless of size, plus jellyfish and sharks
+  - All points doubled during frenzy
+  - Gold sparkle particles float across the screen
+  - Bubbles render as gold sparkles
+  - Flashing "GOLD FRENZY" countdown in title bar
+- New entity: GoldSparkle particle (trail + ambient effects)
+
 ## v0.7.0
 - Added color to sea floor: yellow sand, green seaweed, grey rocks
 - Bubbles are now blue with bright blue pop animation

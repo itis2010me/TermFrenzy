@@ -64,6 +64,23 @@ JELLY_STING_FLASH = 0.3
 JELLY_STING_SPEED = 0.3
 MAX_JELLIES = 2
 
+# Gold Fish
+GOLD_FISH_SPAWN_INTERVAL_RANGE = (45.0, 60.0)
+GOLD_FISH_SPEED_RANGE = (24.0, 32.0)  # much faster than normal (4-12)
+GOLD_FISH_POINTS = 5
+JELLY_POINTS = 8
+
+# Gold Frenzy (activated when player eats gold fish)
+GOLD_FRENZY_DURATION = 10.0
+GOLD_FRENZY_POINT_MULT = 2
+GOLD_FRENZY_COLOR = 'yellow'
+GOLD_SPARKLE_CHARS = ['✦', '✧', '★', '·', '✶', '*']
+GOLD_SPARKLE_SPAWN_RATE = 0.3  # seconds between sparkle spawns
+GOLD_SPARKLE_MAX = 15
+GOLD_SPARKLE_RISE_SPEED = 2.0
+GOLD_SPARKLE_DRIFT_RANGE = (-1.5, 1.5)
+GOLD_SPARKLE_LIFETIME = 2.0
+
 # NPC levels and points (indexed parallel to NPC_SPRITES in fish_sprites.py)
 NPC_LEVELS = [0, 0, 0, 1, 1, 1]
 NPC_SPAWN_WEIGHTS = [3, 3, 3, 1, 1, 1]  # small fish spawn 3x more often
