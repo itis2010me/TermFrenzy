@@ -76,7 +76,7 @@ def draw_title(term, player, aqua_mode, now=0.0):
 def draw_aqua_frame(term, sea, bubbles, npc_fish, jellies, now):
     output = term.home + term.clear
     output += draw_border(term)
-    output += term.move_xy(2, 0) + " TermFrenzy "
+    output += term.move_xy(2, 0) + " Quit: Q "
     output += sea.draw(term, now, 'back')
     for b in bubbles:
         output += b.draw(term, now)
@@ -131,6 +131,7 @@ def title_screen(term, fd):
     last_jelly_spawn = time.monotonic()
     next_jelly_interval = random.uniform(*JELLY_SPAWN_INTERVAL_RANGE)
     selected = 0  # 0 = Frenzy, 1 = Aquarium
+    show_menu = True
 
     options = ["Frenzy Mode", "Aquarium Mode"]
 
@@ -150,14 +151,16 @@ def title_screen(term, fd):
 
         if 'q' in plain:
             return None, None
+        if 't' in plain or 'T' in plain:
+            show_menu = not show_menu
 
         # Arrow keys: \033[A = up, \033[B = down
-        if '\033[A' in raw_str:
+        if show_menu and '\033[A' in raw_str:
             selected = (selected - 1) % len(options)
-        if '\033[B' in raw_str:
+        if show_menu and '\033[B' in raw_str:
             selected = (selected + 1) % len(options)
 
-        if '\r' in plain or '\n' in plain:
+        if show_menu and ('\r' in plain or '\n' in plain):
             choice = 'frenzy' if selected == 0 else 'aquarium'
             state = (sea, bubbles, npc_fish, jellies,
                      last_bubble_time, last_npc_spawn,
@@ -179,21 +182,22 @@ def title_screen(term, fd):
                 output += term.move_xy(title_x, ty) + line
 
         # Draw menu box overlay
-        output += term.move_xy(box_x, box_y) + '+' + '-' * (box_w - 2) + '+'
-        for row in range(1, box_h - 1):
-            output += term.move_xy(box_x, box_y + row) + '|' + ' ' * (box_w - 2) + '|'
-        output += term.move_xy(box_x, box_y + box_h - 1) + '+' + '-' * (box_w - 2) + '+'
+        if show_menu:
+            output += term.move_xy(box_x, box_y) + '+' + '-' * (box_w - 2) + '+'
+            for row in range(1, box_h - 1):
+                output += term.move_xy(box_x, box_y + row) + '|' + ' ' * (box_w - 2) + '|'
+            output += term.move_xy(box_x, box_y + box_h - 1) + '+' + '-' * (box_w - 2) + '+'
 
-        # Options centered in box
-        longest = max(len(o) for o in options)
-        for i, opt in enumerate(options):
-            if i == selected:
-                line = '> ' + opt.ljust(longest) + ' <'
-            else:
-                line = '  ' + opt.ljust(longest) + '  '
-            lx = box_x + (box_w - len(line)) // 2
-            ly = box_y + (box_h - 1) // 2 - 1 + i * 2
-            output += term.move_xy(lx, ly) + line
+            # Options centered in box
+            longest = max(len(o) for o in options)
+            for i, opt in enumerate(options):
+                if i == selected:
+                    line = '> ' + opt.ljust(longest) + ' <'
+                else:
+                    line = '  ' + opt.ljust(longest) + '  '
+                lx = box_x + (box_w - len(line)) // 2
+                ly = box_y + (box_h - 1) // 2 - 1 + i * 2
+                output += term.move_xy(lx, ly) + line
 
         print(output, end='', flush=True)
 

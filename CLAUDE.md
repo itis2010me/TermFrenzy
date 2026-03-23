@@ -31,7 +31,7 @@ src/
 
 ### Title Screen
 
-`title_screen(term, fd)` in `game.py` runs a live aquarium as background with a centered ASCII art logo (`TITLE_ART` in `config.py`) and a selection box. Arrow keys switch between Frenzy and Aquarium mode, Enter selects, `q` quits. The terminal context (`fullscreen`, `cbreak`, `hidden_cursor`) is shared between the title screen and the game to avoid screen flash. When Aquarium mode is selected, the aquarium state (sea floor, fish, bubbles, jellyfish) carries over seamlessly.
+`title_screen(term, fd)` in `game.py` runs a live aquarium as background with a centered ASCII art logo (`TITLE_ART` in `config.py`) and a selection box. Arrow keys switch between Frenzy and Aquarium mode, Enter selects, `q` quits. Pressing `T` toggles the menu box on/off (hidden feature, useful for screenshots). The terminal context (`fullscreen`, `cbreak`, `hidden_cursor`) is shared between the title screen and the game to avoid screen flash. When Aquarium mode is selected, the aquarium state (sea floor, fish, bubbles, jellyfish) carries over seamlessly.
 
 ### Game Loop Structure
 

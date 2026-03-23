@@ -2,7 +2,7 @@
 
 A terminal-based game inspired by PopCap's Feeding Frenzy, built with Python and [blessed](https://github.com/jquast/blessed).
 
-![Gameplay](assets/gameshot.png)
+![Title Screen](assets/titleScreen.png)
 
 ## Prerequisites
 
