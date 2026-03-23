@@ -81,6 +81,18 @@ GOLD_SPARKLE_RISE_SPEED = 2.0
 GOLD_SPARKLE_DRIFT_RANGE = (-1.5, 1.5)
 GOLD_SPARKLE_LIFETIME = 2.0
 
+# Player color schemes: each is (body, eye, tail, dot) as blessed attr names
+# or (r,g,b) tuples for color_rgb
+PLAYER_COLOR_SCHEMES = [
+    {"body": "cyan",    "eye": "bold_white",  "tail": "orange",      "dot": "cyan"},
+    {"body": "orange",  "eye": "bold_white",  "tail": "yellow",      "dot": "orange"},
+    {"body": "blue",    "eye": "bold_yellow", "tail": "green",       "dot": "blue"},
+    {"body": "green",   "eye": "bold_white",  "tail": "orange",      "dot": "bold_yellow"},
+]
+PLAYER_TAIL_CHARS = set("}>{<")
+PLAYER_EYE_CHARS = set("o")
+PLAYER_DOT_CHARS = set("\u00b7")
+
 # NPC levels and points (indexed parallel to NPC_SPRITES in fish_sprites.py)
 NPC_LEVELS = [0, 0, 0, 1, 1, 1]
 NPC_SPAWN_WEIGHTS = [3, 3, 3, 1, 1, 1]  # small fish spawn 3x more often

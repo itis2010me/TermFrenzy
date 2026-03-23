@@ -20,6 +20,7 @@ from config import (
     GOLD_FRENZY_POINT_MULT,
     GOLD_SPARKLE_CHARS, GOLD_SPARKLE_RISE_SPEED, GOLD_SPARKLE_DRIFT_RANGE,
     GOLD_SPARKLE_LIFETIME,
+    PLAYER_COLOR_SCHEMES, PLAYER_TAIL_CHARS, PLAYER_EYE_CHARS, PLAYER_DOT_CHARS,
 )
 
 
@@ -38,6 +39,7 @@ class Player:
         self.stung_until = 0.0
         self.sting_start = 0.0
         self.gold_frenzy_until = 0.0
+        self.color_scheme = random.choice(PLAYER_COLOR_SCHEMES)
         self._update_sprite()
         self.draw_x = self.px
         self.draw_y = self.py
@@ -99,10 +101,30 @@ class Player:
                 self.size = "big"
             self._update_sprite()
 
+    def _resolve_colors(self, term):
+        scheme = self.color_scheme
+        body_color = getattr(term, scheme["body"])
+        eye_color = getattr(term, scheme["eye"])
+        tail_color = getattr(term, scheme["tail"])
+        dot_color = getattr(term, scheme["dot"])
+        return body_color, eye_color, tail_color, dot_color
+
+    def _colorize_char(self, ch, body_color, eye_color, tail_color, dot_color):
+        if ch == ' ':
+            return ch
+        if ch in PLAYER_EYE_CHARS:
+            return eye_color(ch)
+        if ch in PLAYER_TAIL_CHARS:
+            return tail_color(ch)
+        if ch in PLAYER_DOT_CHARS:
+            return dot_color(ch)
+        return body_color(ch)
+
     def draw(self, term):
         now = time.monotonic()
         flashing = now - self.sting_start < JELLY_STING_FLASH
         gold_active = self.is_gold_frenzy(now)
+        body_color, eye_color, tail_color, dot_color = self._resolve_colors(term)
         output = ''
         for i, row in enumerate(self.sprite):
             if flashing and int(now / 0.05) % 2 == 0:
@@ -111,7 +133,10 @@ class Player:
             if gold_active:
                 rendered += term.yellow(row)
             else:
-                rendered += row
+                rendered += ''.join(
+                    self._colorize_char(ch, body_color, eye_color, tail_color, dot_color)
+                    for ch in row
+                )
             output += rendered
         return output
 

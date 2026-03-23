@@ -39,6 +39,8 @@ A title screen lets you choose between **Frenzy Mode** (gameplay) and **Aquarium
 ## Features
 
 - **Mouse-controlled** ASCII fish that swims toward your cursor
+  - Detailed multi-row sprite with curved contours, dot-texture scales, and an expressive tail
+  - Per-character coloring with a random color scheme each game (cyan, orange, blue, or green themed)
 - **Eat smaller fish** to earn points and auto-grow (small → medium → big)
   - Level 0 fish (small sprites) give 2 points, level 1 fish give 5 points
   - Grow to medium at 20 points, big at 50 points

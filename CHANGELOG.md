@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.9.0
+- Redesigned player fish sprites: curved contours, dot-texture scales, expressive tail fins
+- Per-character player coloring with 4 random color schemes (cyan, orange, blue, green themed)
+- Each game randomly selects a color scheme for the player fish
+
 ## v0.8.0
 - Gold fish: rare fast-swimming golden NPC with sparkle trail, spawns every 45-60s in frenzy mode
 - Gold Frenzy power-up: eating the gold fish triggers a 10s frenzy mode
